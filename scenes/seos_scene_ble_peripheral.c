@@ -1,0 +1,78 @@
+#include "../seos_i.h"
+#include <dolphin/dolphin.h>
+
+#define TAG "SeosSceneBleReader"
+
+void seos_scene_ble_peripheral_on_enter(void* context) {
+    Seos* seos = context;
+    dolphin_deed(DolphinDeedNfcRead);
+
+    // Setup view
+    Popup* popup = seos->popup;
+    popup_set_header(popup, "Starting", 68, 20, AlignLeft, AlignTop);
+    // popup_set_icon(popup, 0, 3, &I_RFIDDolphinReceive_97x61);
+
+    seos->seos_characteristic = seos_characteristic_alloc(seos);
+    seos_characteristic_start(seos->seos_characteristic, seos->flow_mode);
+
+    seos_blink_start(seos);
+
+    view_dispatcher_switch_to_view(seos->view_dispatcher, SeosViewPopup);
+}
+
+bool seos_scene_ble_peripheral_on_event(void* context, SceneManagerEvent event) {
+    Seos* seos = context;
+    Popup* popup = seos->popup;
+    bool consumed = false;
+
+    if(event.type == SceneManagerEventTypeCustom) {
+        if(event.event == SeosCustomEventReaderSuccess) {
+            notification_message(seos->notifications, &sequence_success);
+            scene_manager_next_scene(seos->scene_manager, SeosSceneReadSuccess);
+            consumed = true;
+        } else if(event.event == SeosCustomEventReaderError) {
+            scene_manager_next_scene(seos->scene_manager, SeosSceneReadError);
+            consumed = true;
+        } else if(event.event == SeosCustomEventHCIInit) {
+            popup_set_header(popup, "Init", 68, 20, AlignLeft, AlignTop);
+            consumed = true;
+        } else if(event.event == SeosCustomEventAdvertising) {
+            popup_set_header(popup, "Advertising", 68, 20, AlignLeft, AlignTop);
+            consumed = true;
+        } else if(event.event == SeosCustomEventConnected) {
+            popup_set_header(popup, "Connected", 68, 20, AlignLeft, AlignTop);
+            consumed = true;
+        } else if(event.event == SeosCustomEventAuthenticated) {
+            popup_set_header(popup, "Auth'd", 68, 20, AlignLeft, AlignTop);
+            consumed = true;
+        } else if(event.event == SeosCustomEventSIORequested) {
+            popup_set_header(popup, "SIO\nRequested", 68, 20, AlignLeft, AlignTop);
+            consumed = true;
+        }
+    } else if(event.type == SceneManagerEventTypeBack) {
+        if(seos->credential.sio_len > 0) {
+            scene_manager_search_and_switch_to_previous_scene(
+                seos->scene_manager, SeosSceneSavedMenu);
+        } else {
+            scene_manager_previous_scene(seos->scene_manager);
+        }
+        consumed = true;
+    }
+
+    return consumed;
+}
+
+void seos_scene_ble_peripheral_on_exit(void* context) {
+    Seos* seos = context;
+
+    if(seos->seos_characteristic) {
+        seos_characteristic_stop(seos->seos_characteristic);
+        seos_characteristic_free(seos->seos_characteristic);
+        seos->seos_characteristic = NULL;
+    }
+
+    // Clear view
+    popup_reset(seos->popup);
+
+    seos_blink_stop(seos);
+}
