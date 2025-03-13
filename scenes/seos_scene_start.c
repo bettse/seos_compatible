@@ -40,12 +40,14 @@ void seos_scene_start_on_update(void* context) {
             SubmenuIndexScannerMenu,
             seos_scene_start_submenu_callback,
             seos);
+        /*
         submenu_add_item(
             submenu,
             "BLE Cred Interrogate",
             SubmenuIndexBLECredInterrogate,
             seos_scene_start_submenu_callback,
             seos);
+            */
     }
     submenu_add_item(submenu, "About", SubmenuIndexAbout, seos_scene_start_submenu_callback, seos);
 
