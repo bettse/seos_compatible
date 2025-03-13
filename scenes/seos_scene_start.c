@@ -111,10 +111,11 @@ bool seos_scene_start_on_event(void* context, SceneManagerEvent event) {
             }
         }
     } else if(event.type == SceneManagerEventTypeTick) {
-        if(ble_checks >= 0) {
-            FURI_LOG_D(TAG, "ble check %d", ble_checks);
+        if(ble_checks > 0) {
+            FURI_LOG_D(TAG, "ble check %d has_ble %d", ble_checks, seos->has_ble);
             ble_checks--;
             if(seos->has_ble) {
+                ble_checks = 0;
                 seos_scene_start_on_update(context);
             }
         }
