@@ -1,0 +1,17 @@
+
+## Keys
+
+The app uses all 00 keys by default. If you'd like to use your own keys, use the format of the `keys-example.txt` to specify them, and place into `SD Card/apps_data/seos/keys.txt`
+
+
+## BLE Support
+
+Supports nRF52840 dongle and nRF72840DK (dev kit) using `hci_uart_3wire` example from Nordic SDK.  See [README](https://gitlab.com/bettse/flipper_seos/-/blob/main/README.md?ref_type=heads#hardware-for-ble-support) for wiring details.
+
+## Note
+
+This software incorporates a third-party implementation of Seos™ technology. It is not developed, authorized, licensed, or endorsed by HID Global, ASSA ABLOY, or any of their affiliates. References to Seos™ are solely for descriptive and compatibility purposes.
+
+No guarantee of compatibility or functionality is made. This implementation may not work with all Seos™-enabled systems, and its performance, security, and reliability are not assured. Users assume all risks associated with its use.
+
+Seos™, HID Global, and ASSA ABLOY are trademarks or registered trademarks of their respective owners. This software is not associated with or sponsored by them in any way.
