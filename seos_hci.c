@@ -95,6 +95,9 @@ void seos_hci_free(SeosHci* seos_hci) {
     furi_assert(seos_hci);
 
     furi_timer_free(seos_hci->timer);
+    seos_hci_h5_set_init_callback(seos_hci->seos_hci_h5, NULL, NULL);
+    seos_hci_h5_set_receive_callback(seos_hci->seos_hci_h5, NULL, NULL);
+
     seos_hci_h5_free(seos_hci->seos_hci_h5);
     free(seos_hci);
 }
@@ -131,6 +134,10 @@ void seos_hci_stop(SeosHci* seos_hci) {
         if(seos_hci->scan_status) {
             seos_hci_set_scan(seos_hci, false);
         }
+    }
+    if(furi_timer_is_running(seos_hci->timer)) {
+        FURI_LOG_D(TAG, "clear timer");
+        furi_timer_stop(seos_hci->timer);
     }
 }
 
@@ -211,6 +218,7 @@ void seos_hci_handle_event_cmd_complete_ogf_le(SeosHci* seos_hci, uint16_t OCF, 
         break;
     case OCF_LE_SET_ADVERTISE_ENABLE:
         if(furi_timer_is_running(seos_hci->timer)) {
+            FURI_LOG_D(TAG, "clear timer");
             furi_timer_stop(seos_hci->timer);
         }
         uint8_t status = bit_buffer_get_byte(frame, 6);
@@ -232,6 +240,7 @@ void seos_hci_handle_event_cmd_complete_ogf_le(SeosHci* seos_hci, uint16_t OCF, 
         break;
     case OCF_LE_SET_SCAN_ENABLE:
         if(furi_timer_is_running(seos_hci->timer)) {
+            FURI_LOG_D(TAG, "clear timer");
             furi_timer_stop(seos_hci->timer);
         }
         if(seos_hci->scan_status) { // enabled
