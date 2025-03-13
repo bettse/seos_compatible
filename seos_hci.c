@@ -103,6 +103,11 @@ SeosHci* seos_hci_alloc(Seos* seos) {
 
 void seos_hci_free(SeosHci* seos_hci) {
     furi_assert(seos_hci);
+    if(furi_timer_is_running(seos_hci->timer)) {
+        FURI_LOG_D(TAG, "clear timer");
+        furi_timer_stop(seos_hci->timer);
+    }
+    furi_timer_free(seos_hci->timer);
 
     furi_timer_free(seos_hci->timer);
     seos_hci_h5_set_init_callback(seos_hci->seos_hci_h5, NULL, NULL);
@@ -590,6 +595,7 @@ void seos_hci_handle_event_le_meta(SeosHci* seos_hci, BitBuffer* frame) {
             break;
         }
 
+        /*
         FURI_LOG_D(
             TAG,
             "Adv %d reports: event type %d address type %d data len %d",
@@ -597,6 +603,7 @@ void seos_hci_handle_event_le_meta(SeosHci* seos_hci, BitBuffer* frame) {
             Event_Type,
             Address_Type,
             Data_Length);
+            */
         // seos_log_buffer(TAG, "ADV_IND", (uint8_t*)adv_data, Data_Length);
 
         uint8_t i = 0;
@@ -705,17 +712,27 @@ void seos_hci_event_handler(SeosHci* seos_hci, BitBuffer* frame) {
     } else if(sub_event_type == BT_HCI_EVT_LE_META) {
         seos_hci_handle_event_le_meta(seos_hci, frame);
     } else if(sub_event_type == BT_HCI_EVT_DISCONN_COMPLETE) {
+        // FURI_LOG_D(TAG, "BT_HCI_EVT_CMD_COMPLETE");
+        seos_hci_handle_event_cmd_complete(seos_hci, frame);
+    } else if(sub_event_type == BT_HCI_EVT_LE_META) {
+        // FURI_LOG_D(TAG, "BT_HCI_EVT_LE_META");
+        seos_hci_handle_event_le_meta(seos_hci, frame);
+    } else if(sub_event_type == BT_HCI_EVT_DISCONN_COMPLETE) {
+        // FURI_LOG_D(TAG, "BT_HCI_EVT_DISCONN_COMPLETE");
         seos_hci->connection_handle = 0;
 
         if(seos_hci->mode == BLE_PERIPHERAL) {
-            FURI_LOG_W(TAG, "Disconnect. Restart Advertising");
-            seos_hci_enable_advertising(seos_hci, true);
+            if(seos_hci->adv_status) {
+                FURI_LOG_W(TAG, "Disconnect. Restart Advertising");
+                seos_hci_enable_advertising(seos_hci, true);
+            }
         } else if(seos_hci->mode == BLE_CENTRAL) {
             FURI_LOG_W(TAG, "Disconnect. Scan again");
             seos_hci->device_found = false;
             seos_hci_set_scan(seos_hci, true);
         }
     } else if(sub_event_type == BT_HCI_EVT_NUM_COMPLETED_PACKETS) {
+        // FURI_LOG_D(TAG, "BT_HCI_EVT_NUM_COMPLETED_PACKETS");
         struct bt_hci_evt_num_completed_packets {
             uint8_t num_handles;
             uint16_t handle;
@@ -800,7 +817,7 @@ size_t seos_hci_recv(void* context, BitBuffer* frame) {
         seos_hci_acldata_handler(seos_hci, frame);
         break;
     default:
-        FURI_LOG_W(TAG, "Haven't added support for other HCI commands yet");
+        FURI_LOG_W(TAG, "Haven't added support for other HCI commands yet: %02x", event_type);
         break;
     }
 
