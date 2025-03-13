@@ -34,6 +34,7 @@ typedef enum {
 } BleMode;
 
 typedef enum {
+    FLOW_TEST,
     FLOW_READER,
     FLOW_CRED,
     FLOW_READER_SCANNER,

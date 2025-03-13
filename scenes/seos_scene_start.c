@@ -61,8 +61,7 @@ void seos_scene_start_on_enter(void* context) {
     if(seos->has_ble == false) {
         ble_checks = 3;
         seos_hci = seos_hci_alloc(seos);
-        // mode/flow doesn't really matter, but these at least don't cause traffic
-        seos_hci_start(seos_hci, BLE_PERIPHERAL, FLOW_READER);
+        seos_hci_start(seos_hci, BLE_PERIPHERAL, FLOW_TEST);
     }
 
     seos_scene_start_on_update(context);

@@ -124,9 +124,13 @@ void seos_hci_stop(SeosHci* seos_hci) {
     seos_hci->connection_handle = 0;
     seos_hci_h5_stop(seos_hci->seos_hci_h5);
     if(seos_hci->mode == BLE_PERIPHERAL) {
-        seos_hci_enable_advertising(seos_hci, false);
+        if(seos_hci->adv_status) {
+            seos_hci_enable_advertising(seos_hci, false);
+        }
     } else if(seos_hci->mode == BLE_CENTRAL) {
-        seos_hci_set_scan(seos_hci, false);
+        if(seos_hci->scan_status) {
+            seos_hci_set_scan(seos_hci, false);
+        }
     }
 }
 
