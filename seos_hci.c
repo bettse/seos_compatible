@@ -46,6 +46,7 @@
 #define BT_HCI_EVT_QOS_SETUP_COMPLETE    0x0d
 #define BT_HCI_EVT_CMD_COMPLETE          0x0e
 #define BT_HCI_EVT_CMD_STATUS            0x0f
+#define BT_HCI_EVT_HARDWARE_ERROR        0x10
 #define BT_HCI_EVT_NUM_COMPLETED_PACKETS 0x13
 #define BT_HCI_EVT_LE_META               0x3e // HCI_LE_Connection_Complete
 
@@ -741,6 +742,8 @@ void seos_hci_event_handler(SeosHci* seos_hci, BitBuffer* frame) {
             seos_hci->device_found = false;
             seos_hci_set_scan(seos_hci, true);
         }
+    } else if(sub_event_type == BT_HCI_EVT_HARDWARE_ERROR) {
+        FURI_LOG_W(TAG, "BT_HCI_EVT_HARDWARE_ERROR");
     } else if(sub_event_type == BT_HCI_EVT_NUM_COMPLETED_PACKETS) {
         // FURI_LOG_D(TAG, "BT_HCI_EVT_NUM_COMPLETED_PACKETS");
         struct bt_hci_evt_num_completed_packets {
@@ -828,6 +831,7 @@ size_t seos_hci_recv(void* context, BitBuffer* frame) {
         break;
     default:
         FURI_LOG_W(TAG, "Haven't added support for other HCI commands yet: %02x", event_type);
+        seos_log_bitbuffer(TAG, "unhandled", frame);
         break;
     }
 
