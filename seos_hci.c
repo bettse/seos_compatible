@@ -475,7 +475,7 @@ void seos_hci_enable_advertising(SeosHci* seos_hci, bool enable) {
     bit_buffer_free(message);
 
     FURI_LOG_I(TAG, "Start timer to make sure adv change ran");
-    size_t delay = 100 /*ms*/ / (1000.0f / furi_kernel_get_tick_frequency());
+    size_t delay = 1000 /*ms*/ / (1000.0f / furi_kernel_get_tick_frequency());
     furi_check(furi_timer_start(seos_hci->timer, delay) == FuriStatusOk);
 }
 
