@@ -111,7 +111,6 @@ void seos_hci_free(SeosHci* seos_hci) {
     }
     furi_timer_free(seos_hci->timer);
 
-    furi_timer_free(seos_hci->timer);
     seos_hci_h5_set_init_callback(seos_hci->seos_hci_h5, NULL, NULL);
     seos_hci_h5_set_receive_callback(seos_hci->seos_hci_h5, NULL, NULL);
 
