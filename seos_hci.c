@@ -404,7 +404,7 @@ void seos_hci_handle_event_cmd_complete(SeosHci* seos_hci, BitBuffer* frame) {
         /*
         FURI_LOG_D(
             TAG,
-            "event %d sub event %d ncmd %d cmd %d status %d",
+            "event %d sub event %d ncmd %d cmd %04x status %d",
             event_type,
             sub_event_type,
             ncmd,
