@@ -9,13 +9,14 @@ Flipper app for reading and emulating Seos-compatible cards/fobs/mobile credenti
 - Fix iso14443a-4 framing
 - ASN.1 for serializing/deserializing
 - Support for larger message wrapping/unwrapping
+- When parsing incoming data, use buffer + len instead of BitBuffer so I can increment buffer pointer as I parse header(s)
 - CMAC checking where I missed it
 
 ## Keys
 
 The app uses all 00 keys by default. If you'd like to use your own keys, use the format of the `keys-example.txt` to specify them, and place into `SD Card/apps_data/seos/keys.txt`
 
-## Hardware for BLE support
+## Hardware for BLE support (experimental)
 
 1. Install/setup nordic SDK
 1. Install Toolchain manager
