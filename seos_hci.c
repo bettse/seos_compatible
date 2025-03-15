@@ -192,6 +192,14 @@ void seos_hci_handle_event_cmd_complete_ogf_host(SeosHci* seos_hci, uint16_t OCF
             0x01, 0x20, 0x08, 0x1f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
         bit_buffer_append_bytes(message, set_le_event_mask, sizeof(set_le_event_mask));
         break;
+    case OCF_READ_LE_HOST_SUPPORTED:
+        FURI_LOG_D(TAG, "OCF_READ_LE_HOST_SUPPORTED");
+        break;
+    case OCF_WRITE_LE_HOST_SUPPORTED:
+        FURI_LOG_D(TAG, "OCF_WRITE_LE_HOST_SUPPORTED");
+        uint8_t read_le_host_supported[] = {0x6c, 0x0c, 0x00};
+        bit_buffer_append_bytes(message, read_le_host_supported, sizeof(read_le_host_supported));
+        break;
     default:
         FURI_LOG_W(TAG, "Unhandled OCF %04x", OCF);
         break;
