@@ -223,7 +223,7 @@ void seos_hci_handle_event_cmd_complete_ogf_info(SeosHci* seos_hci, uint16_t OCF
     BitBuffer* message = bit_buffer_alloc(128);
     switch(OCF) {
     case OCF_READ_LOCAL_VERSION:
-        // uint8_t write_LE_host_supported[] = {   0x01, 0x6d, 0x0c, 0x02, 0x01, 0x00};
+        FURI_LOG_D(TAG, "OCF_READ_LOCAL_VERSION");
         uint8_t read_bd_addr[] = {0x09, 0x10, 0x00};
         bit_buffer_append_bytes(message, read_bd_addr, sizeof(read_bd_addr));
         break;
@@ -261,6 +261,7 @@ void seos_hci_handle_event_cmd_complete_ogf_le(SeosHci* seos_hci, uint16_t OCF, 
         bit_buffer_append_bytes(message, read_local_version, sizeof(read_local_version));
         break;
     case OCF_LE_READ_BUFFER_SIZE:
+        FURI_LOG_D(TAG, "OCF_LE_READ_BUFFER_SIZE");
         uint8_t le_set_random_address[] = {0x05, 0x20, 0x06, 0xCA, 0xFE, 0x00, 0x00, 0x00, 0x03};
         bit_buffer_append_bytes(message, le_set_random_address, sizeof(le_set_random_address));
         break;
