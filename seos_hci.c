@@ -75,6 +75,14 @@ void seos_hci_timer(void* context) {
     }
 }
 
+void seos_hci_clear_known_addresses(SeosHci* seos_hci) {
+    for(size_t i = 0; i < MAX_SCANNED_ADDRESS; i++) {
+        ScanAddress* scan_address = &seos_hci->scanned_addresses[i];
+        scan_address->used = false;
+        memset(scan_address->address, 0, MAC_ADDRESS_LEN);
+    }
+}
+
 SeosHci* seos_hci_alloc(Seos* seos) {
     SeosHci* seos_hci = malloc(sizeof(SeosHci));
     memset(seos_hci, 0, sizeof(SeosHci));
@@ -87,6 +95,8 @@ SeosHci* seos_hci_alloc(Seos* seos) {
     seos_hci->timer = furi_timer_alloc(seos_hci_timer, FuriTimerTypeOnce, seos_hci);
     seos_hci_h5_set_init_callback(seos_hci->seos_hci_h5, seos_hci_init, seos_hci);
     seos_hci_h5_set_receive_callback(seos_hci->seos_hci_h5, seos_hci_recv, seos_hci);
+
+    seos_hci_clear_known_addresses(seos_hci);
 
     return seos_hci;
 }
@@ -139,6 +149,32 @@ void seos_hci_stop(SeosHci* seos_hci) {
         FURI_LOG_D(TAG, "clear timer");
         furi_timer_stop(seos_hci->timer);
     }
+    seos_hci_clear_known_addresses(seos_hci);
+}
+
+bool seos_hci_known_address(SeosHci* seos_hci, const uint8_t Address[MAC_ADDRESS_LEN]) {
+    // Does it exist in the list?
+    for(size_t i = 0; i < MAX_SCANNED_ADDRESS; i++) {
+        ScanAddress* scan_address = &seos_hci->scanned_addresses[i];
+        if(scan_address->used) {
+            if(memcmp(Address, scan_address->address, MAC_ADDRESS_LEN) == 0) {
+                return true;
+            }
+        }
+    }
+
+    // Not in list, add
+    for(size_t i = 0; i < MAX_SCANNED_ADDRESS; i++) {
+        ScanAddress* scan_address = &seos_hci->scanned_addresses[i];
+        if(!scan_address->used) {
+            memcpy(scan_address->address, Address, MAC_ADDRESS_LEN);
+            scan_address->used = true;
+            // It wasn't previously known
+            return false;
+        }
+    }
+
+    return false;
 }
 
 void seos_hci_handle_event_cmd_complete_ogf_host(SeosHci* seos_hci, uint16_t OCF, BitBuffer* frame) {
@@ -584,9 +620,10 @@ void seos_hci_handle_event_le_meta(SeosHci* seos_hci, BitBuffer* frame) {
                            val,
                            seos_reader_service_backwards,
                            sizeof(seos_reader_service_backwards)) == 0) {
-                        // TODO: handle duplicates
-                        notification_message(
-                            seos_hci->seos->notifications, &sequence_single_vibro);
+                        if(!seos_hci_known_address(seos_hci, Address)) {
+                            notification_message(
+                                seos_hci->seos->notifications, &sequence_single_vibro);
+                        }
                     }
                 } else if(seos_hci->flow_mode == FLOW_CRED_SCANNER) {
                     // Cred scanner looks for devices advertising credential service, it doesn't act like a credential (as in FLOW_CRED)
@@ -594,9 +631,10 @@ void seos_hci_handle_event_le_meta(SeosHci* seos_hci, BitBuffer* frame) {
                            val,
                            seos_cred_service_backwards,
                            sizeof(seos_cred_service_backwards)) == 0) {
-                        // TODO: handle duplicates
-                        notification_message(
-                            seos_hci->seos->notifications, &sequence_single_vibro);
+                        if(!seos_hci_known_address(seos_hci, Address)) {
+                            notification_message(
+                                seos_hci->seos->notifications, &sequence_single_vibro);
+                        }
                     }
                 }
                 break;

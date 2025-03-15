@@ -4,11 +4,19 @@
 #include "seos_hci_h5.h"
 #include "seos_common.h"
 
+#define MAC_ADDRESS_LEN     6
+#define MAX_SCANNED_ADDRESS 5
+
 typedef void (
     *SeosHciReceiveCallback)(void* context, uint16_t handle, uint8_t flags, BitBuffer* pdu);
 
 typedef void (*SeosHciCompletedPacketsCallback)(void* context);
 typedef void (*SeosHciCentralConnectionCallback)(void* context);
+
+typedef struct {
+    uint8_t address[MAC_ADDRESS_LEN];
+    bool used;
+} ScanAddress;
 
 typedef struct {
     Seos* seos;
@@ -30,13 +38,15 @@ typedef struct {
 
     bool scan_status;
     bool adv_status;
-    uint8_t address[6];
+    uint8_t address[MAC_ADDRESS_LEN];
     uint8_t address_type;
 
     size_t adv_report_count;
     bool device_found;
 
     FuriTimer* timer;
+
+    ScanAddress scanned_addresses[MAX_SCANNED_ADDRESS];
 } SeosHci;
 
 SeosHci* seos_hci_alloc(Seos* seos);
