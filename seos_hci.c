@@ -63,6 +63,8 @@ static uint8_t seos_reader_service_backwards[] =
 static uint8_t seos_cred_service_backwards[] =
     {0x02, 0x00, 0x00, 0x7a, 0x17, 0x00, 0x00, 0x80, 0x00, 0x10, 0x00, 0x00, 0x01, 0x98, 0x00, 0x00};
 
+static uint8_t empty_mac[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+
 // Occationally scan stop's completion doesn't get caught.
 // Use the timer callback to call it again
 void seos_hci_timer(void* context) {
@@ -226,8 +228,17 @@ void seos_hci_handle_event_cmd_complete_ogf_info(SeosHci* seos_hci, uint16_t OCF
         bit_buffer_append_bytes(message, read_bd_addr, sizeof(read_bd_addr));
         break;
     case OCF_READ_BD_ADDR:
-        uint8_t le_read_buffer_size[] = {0x02, 0x20, 0x00};
-        bit_buffer_append_bytes(message, le_read_buffer_size, sizeof(le_read_buffer_size));
+        // 040e0a05091000 e2f284 dad4d4
+        FURI_LOG_D(TAG, "OCF_READ_BD_ADDR");
+        if(memcmp(bit_buffer_get_data(frame) + 7, empty_mac, sizeof(empty_mac)) == 0) {
+            uint8_t vendor_set_addr[] = {0x06, 0xfc, 0x06, 0x0, 0x0, 0x1, 0x2, 0x21, 0xAD};
+            bit_buffer_append_bytes(message, vendor_set_addr, sizeof(vendor_set_addr));
+        } else {
+            uint16_t opcode = BT_OP(OGF_LE_CTL, OCF_LE_READ_BUFFER_SIZE);
+            uint8_t length = 0;
+            bit_buffer_append_bytes(message, (uint8_t*)&opcode, sizeof(opcode));
+            bit_buffer_append_byte(message, length);
+        }
         break;
     default:
         FURI_LOG_W(TAG, "Unhandled OCF %04x", OCF);
