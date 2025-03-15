@@ -275,11 +275,19 @@ void seos_hci_handle_event_cmd_complete_ogf_le(SeosHci* seos_hci, uint16_t OCF, 
         uint8_t mfg_data[] = {0x14,     0xff,       0x2e,          0x01,     0x15, capabilities,
                               tap_rssi, twist_rssi, seamless_rssi, app_rssi, 0x2a, 0x46,
                               0x4c,     0x30,       0x4b,          0x37,     0x5a, 0x30,
-                              0x31,     0x55,       0x31,          0x00,     0x00};
-        uint8_t device_name[] = {
-            0x09, 0x20, 0x20, 0x1e, 0x08, 0x09, 0x46, 0x6c, 0x69, 0x70, 0x70, 0x65, 0x72};
+                              0x31,     0x55,       0x31};
+        uint8_t device_name[] = {0x08, 0x09, 0x46, 0x6c, 0x69, 0x70, 0x70, 0x65, 0x72};
+        uint8_t ad_len = 0;
+        ad_len += sizeof(device_name);
+        ad_len += sizeof(mfg_data);
+
+        uint8_t header[] = {0x09, 0x20, 0x20, ad_len};
+        bit_buffer_append_bytes(message, header, sizeof(header));
         bit_buffer_append_bytes(message, device_name, sizeof(device_name));
         bit_buffer_append_bytes(message, mfg_data, sizeof(mfg_data));
+        for(int i = 0; i < (31 - ad_len); i++) {
+            bit_buffer_append_byte(message, 0);
+        }
         break;
     default:
         FURI_LOG_W(TAG, "Unhandled OCF %04x", OCF);
