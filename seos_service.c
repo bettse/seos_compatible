@@ -120,8 +120,7 @@ typedef enum {
     SeosServiceRpcStatusActive = 1UL,
 } SeosServiceRpcStatus;
 
-static void
-    ble_svc_seos_update_rpc_char(BleServiceSeos* seos_svc, SeosServiceRpcStatus status) {
+static void ble_svc_seos_update_rpc_char(BleServiceSeos* seos_svc, SeosServiceRpcStatus status) {
     ble_gatt_characteristic_update(
         seos_svc->svc_handle, &seos_svc->chars[SeosSvcGattCharacteristicStatus], &status);
 }
