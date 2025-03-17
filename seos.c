@@ -20,6 +20,14 @@ static void seos_ble_connection_status_callback(BtStatus status, void* context) 
     */
 }
 
+static uint16_t seos_svc_callback(SeosServiceEvent event, void* context) {
+    FURI_LOG_D(TAG, "seos_svc_callback");
+    Seos* seos = context;
+    UNUSED(seos);
+    UNUSED(event);
+    return 0;
+}
+
 bool seos_load_keys(Seos* seos) {
     const char* file_header = "Seos keys";
     const uint32_t file_version = 1;
@@ -154,6 +162,8 @@ Seos* seos_alloc() {
     seos->ble_profile = bt_profile_start(seos->bt, ble_profile_seos, NULL);
     furi_check(seos->ble_profile);
     bt_set_status_changed_callback(seos->bt, seos_ble_connection_status_callback, seos);
+    ble_profile_seos_set_event_callback(seos->ble_profile, 32, seos_svc_callback, seos);
+    UNUSED(seos_svc_callback);
     furi_hal_bt_start_advertising();
 
     return seos;

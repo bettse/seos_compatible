@@ -86,10 +86,26 @@ static BleEventAckStatus ble_svc_seos_event_handler(void* event, void* context) 
                     uint16_t* value = (uint16_t*)attribute_modified->Attr_Data;
                     FURI_LOG_D(TAG, "descriptor event %04x", *value);
                     if(*value == 1) { // ENABLE_NOTIFICATION_VALUE)
-                        uint8_t select_header[] = {0xc0, 0x00, 0xa4, 0x04, 0x00};
+                        uint8_t select[] = {
+                            0xc0,
+                            0x00,
+                            0xa4,
+                            0x04,
+                            0x00,
+                            0x0a,
+                            0xa0,
+                            0x00,
+                            0x00,
+                            0x04,
+                            0x40,
+                            0x00,
+                            0x01,
+                            0x01,
+                            0x00,
+                            0x01};
 
                         SeosSvcDataWrapper report_data = {
-                            .data_ptr = select_header, .data_len = sizeof(select_header)};
+                            .data_ptr = select, .data_len = sizeof(select)};
 
                         ble_gatt_characteristic_update(
                             seos_svc->svc_handle,
@@ -188,14 +204,6 @@ void ble_svc_seos_set_callbacks(
     seos_svc->context = context;
     seos_svc->buff_size = buff_size;
     seos_svc->bytes_ready_to_receive = buff_size;
-
-    /*
-    uint32_t buff_size_reversed = REVERSE_BYTES_U32(seos_svc->buff_size);
-    ble_gatt_characteristic_update(
-        seos_svc->svc_handle,
-        &seos_svc->chars[SeosSvcGattCharacteristicFlowCtrl],
-        &buff_size_reversed);
-        */
 }
 
 void ble_svc_seos_notify_buffer_is_empty(BleServiceSeos* seos_svc) {
@@ -240,7 +248,6 @@ bool ble_svc_seos_update_tx(BleServiceSeos* seos_svc, uint8_t* data, uint16_t da
         return false;
     }
 
-    /*
     for(uint16_t remained = data_len; remained > 0;) {
         uint8_t value_len = MIN(BLE_SVC_SEOS_CHAR_VALUE_LEN_MAX, remained);
         uint16_t value_offset = data_len - remained;
@@ -249,7 +256,7 @@ bool ble_svc_seos_update_tx(BleServiceSeos* seos_svc, uint8_t* data, uint16_t da
         tBleStatus result = aci_gatt_update_char_value_ext(
             0,
             seos_svc->svc_handle,
-            seos_svc->chars[SeosSvcGattCharacteristicTx].handle,
+            seos_svc->chars[SeosSvcGattCharacteristicRxTx].handle,
             remained ? 0x00 : 0x02,
             data_len,
             value_offset,
@@ -261,7 +268,6 @@ bool ble_svc_seos_update_tx(BleServiceSeos* seos_svc, uint8_t* data, uint16_t da
             return false;
         }
     }
-    */
 
     return true;
 }
