@@ -7,8 +7,11 @@
 static void seos_ble_connection_status_callback(BtStatus status, void* context) {
     furi_assert(context);
     Seos* seos = context;
-    UNUSED(seos);
     FURI_LOG_D(TAG, "seos_ble_connection_status_callback %d", (status == BtStatusConnected));
+    if(status == BtStatusConnected) {
+        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventConnected);
+    }
+
     /*
     ble_hid->is_connected = (status == BtStatusConnected);
     if(ble_hid->state_callback) {

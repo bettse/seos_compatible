@@ -45,6 +45,27 @@ static void ble_profile_seos_stop(FuriHalBleProfileBase* profile) {
 static GapConfig seos_template_config = {
     .adv_service.UUID_Type = UUID_TYPE_128,
     .adv_service.Service_UUID_128 = BLE_SVC_SEOS_UUID,
+    .mfg_data =
+        {0x2e,
+         0x01,
+         0x15,
+         0x4b,
+         0xe2,
+         0xb6,
+         0xb6,
+         0xb6,
+         0x2a,
+         0x46,
+         0x4c,
+         0x30,
+         0x4b,
+         0x37,
+         0x5a,
+         0x30,
+         0x31,
+         0x55,
+         0x31},
+    .mfg_data_len = 19,
     .adv_name = "Seos",
     .bonding_mode = false,
     .pairing_method = GapPairingNone,
@@ -78,6 +99,7 @@ void ble_profile_seos_set_event_callback(
     uint16_t buff_size,
     FuriHalBtSeosCallback callback,
     void* context) {
+    FURI_LOG_D(TAG, "ble_profile_seos_set_event_callback");
     furi_check(profile && (profile->config == ble_profile_seos));
 
     BleProfileSeos* seos_profile = (BleProfileSeos*)profile;

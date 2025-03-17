@@ -19,12 +19,31 @@ typedef enum {
     SeosSvcGattCharacteristicCount,
 } SeosSvcGattCharacteristicId;
 
+typedef struct {
+    const void* data_ptr;
+    uint16_t data_len;
+} SeosSvcDataWrapper;
+
+static bool
+    ble_svc_seos_data_callback(const void* context, const uint8_t** data, uint16_t* data_len) {
+    FURI_LOG_D(TAG, "ble_svc_seos_data_callback");
+    const SeosSvcDataWrapper* report_data = context;
+    if(data) {
+        *data = report_data->data_ptr;
+        *data_len = report_data->data_len;
+    } else {
+        *data_len = BLE_SVC_SEOS_DATA_LEN_MAX;
+    }
+    return false;
+}
+
 static const BleGattCharacteristicParams ble_svc_seos_chars[SeosSvcGattCharacteristicCount] = {
     [SeosSvcGattCharacteristicRxTx] =
         {.name = "SEOS",
-         .data_prop_type =
-             FlipperGattCharacteristicDataFixed, // FlipperGattCharacteristicDataCallback
-         .data.fixed.length = BLE_SVC_SEOS_DATA_LEN_MAX,
+         .data_prop_type = FlipperGattCharacteristicDataCallback,
+         .data.callback.fn = ble_svc_seos_data_callback,
+         .data.callback.context = NULL,
+         //.max_length = BLE_SVC_SEOS_DATA_LEN_MAX,
          .uuid.Char_UUID_128 = BLE_SVC_SEOS_CHAR_UUID,
          .uuid_type = UUID_TYPE_128,
          .char_properties = CHAR_PROP_WRITE_WITHOUT_RESP | CHAR_PROP_NOTIFY,
@@ -51,14 +70,37 @@ static BleEventAckStatus ble_svc_seos_event_handler(void* event, void* context) 
     hci_event_pckt* event_pckt = (hci_event_pckt*)(((hci_uart_pckt*)event)->data);
     evt_blecore_aci* blecore_evt = (evt_blecore_aci*)event_pckt->data;
     aci_gatt_attribute_modified_event_rp0* attribute_modified;
-    if(event_pckt->evt == HCI_VENDOR_SPECIFIC_DEBUG_EVT_CODE) {
+
+    if(event_pckt->evt == HCI_LE_META_EVT_CODE) {
+        // FURI_LOG_D(TAG, "ble_svc_seos_event_handler HCI_LE_META_EVT_CODE %02x", event_pckt->data[0]);
+    } else if(event_pckt->evt == HCI_DISCONNECTION_COMPLETE_EVT_CODE) {
+    } else if(event_pckt->evt == HCI_VENDOR_SPECIFIC_DEBUG_EVT_CODE) {
         if(blecore_evt->ecode == ACI_GATT_ATTRIBUTE_MODIFIED_VSEVT_CODE) {
+            FURI_LOG_D(TAG, "Process modification events");
             attribute_modified = (aci_gatt_attribute_modified_event_rp0*)blecore_evt->data;
             if(attribute_modified->Attr_Handle ==
                seos_svc->chars[SeosSvcGattCharacteristicRxTx].handle + 2) {
                 // Descriptor handle
                 ret = BleEventAckFlowEnable;
-                FURI_LOG_D(TAG, "RX descriptor event");
+                if(attribute_modified->Attr_Data_Length == 2) {
+                    uint16_t* value = (uint16_t*)attribute_modified->Attr_Data;
+                    FURI_LOG_D(TAG, "descriptor event %04x", *value);
+                    if(*value == 1) { // ENABLE_NOTIFICATION_VALUE)
+                        uint8_t select_header[] = {0xc0, 0x00, 0xa4, 0x04, 0x00};
+
+                        SeosSvcDataWrapper report_data = {
+                            .data_ptr = select_header, .data_len = sizeof(select_header)};
+
+                        ble_gatt_characteristic_update(
+                            seos_svc->svc_handle,
+                            &seos_svc->chars[SeosSvcGattCharacteristicRxTx],
+                            &report_data);
+                    }
+                } else {
+                    FURI_LOG_D(
+                        TAG, "descriptor event %d bytes", attribute_modified->Attr_Data_Length);
+                }
+
             } else if(
                 attribute_modified->Attr_Handle ==
                 seos_svc->chars[SeosSvcGattCharacteristicRxTx].handle + 1) {
@@ -85,6 +127,8 @@ static BleEventAckStatus ble_svc_seos_event_handler(void* event, void* context) 
                     uint32_t buff_free_size = seos_svc->callback(event, seos_svc->context);
                     FURI_LOG_D(TAG, "Available buff size: %ld", buff_free_size);
                     furi_check(furi_mutex_release(seos_svc->buff_size_mtx) == FuriStatusOk);
+                } else {
+                    FURI_LOG_W(TAG, "No seos_cvs->callback defined");
                 }
                 ret = BleEventAckFlowEnable;
             }
@@ -97,7 +141,15 @@ static BleEventAckStatus ble_svc_seos_event_handler(void* event, void* context) 
                 seos_svc->callback(event, seos_svc->context);
             }
             ret = BleEventAckFlowEnable;
+        } else {
+            FURI_LOG_D(
+                TAG,
+                "ble_svc_seos_event_handler unhandled blecore_evt->ecode %d",
+                blecore_evt->ecode);
         }
+    } else {
+        FURI_LOG_D(
+            TAG, "ble_svc_seos_event_handler unhandled event_pckt->evt %d", event_pckt->evt);
     }
     return ret;
 }
@@ -149,6 +201,7 @@ void ble_svc_seos_set_callbacks(
 void ble_svc_seos_notify_buffer_is_empty(BleServiceSeos* seos_svc) {
     furi_check(seos_svc);
     furi_check(seos_svc->buff_size_mtx);
+    FURI_LOG_D(TAG, "ble_svc_seos_notify_buffer_is_empty");
 
     furi_check(furi_mutex_acquire(seos_svc->buff_size_mtx, FuriWaitForever) == FuriStatusOk);
     if(seos_svc->bytes_ready_to_receive == 0) {
