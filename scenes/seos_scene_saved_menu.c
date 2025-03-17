@@ -21,7 +21,7 @@ void seos_scene_saved_menu_on_enter(void* context) {
     submenu_add_item(
         submenu, "NFC Emulate", SubmenuIndexEmulate, seos_scene_saved_menu_submenu_callback, seos);
 
-    if(seos->has_ble) {
+    if(seos->has_external_ble) {
         submenu_add_item(
             submenu,
             "BLE Emulate Central",

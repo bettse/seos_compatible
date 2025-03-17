@@ -4,30 +4,6 @@
 
 #define SEOS_KEYS_FILENAME "keys"
 
-static void seos_ble_connection_status_callback(BtStatus status, void* context) {
-    furi_assert(context);
-    Seos* seos = context;
-    FURI_LOG_D(TAG, "seos_ble_connection_status_callback %d", (status == BtStatusConnected));
-    if(status == BtStatusConnected) {
-        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventConnected);
-    }
-
-    /*
-    ble_hid->is_connected = (status == BtStatusConnected);
-    if(ble_hid->state_callback) {
-        ble_hid->state_callback(ble_hid->is_connected, ble_hid->callback_context);
-    }
-    */
-}
-
-static uint16_t seos_svc_callback(SeosServiceEvent event, void* context) {
-    FURI_LOG_D(TAG, "seos_svc_callback");
-    Seos* seos = context;
-    UNUSED(seos);
-    UNUSED(event);
-    return 0;
-}
-
 bool seos_load_keys(Seos* seos) {
     const char* file_header = "Seos keys";
     const uint32_t file_version = 1;
@@ -95,7 +71,7 @@ void seos_tick_event_callback(void* context) {
 Seos* seos_alloc() {
     Seos* seos = malloc(sizeof(Seos));
 
-    seos->has_ble = false;
+    seos->has_external_ble = false;
     furi_hal_power_enable_otg();
 
     seos->view_dispatcher = view_dispatcher_alloc();
@@ -153,18 +129,6 @@ Seos* seos_alloc() {
     seos->seos_emulator = seos_emulator_alloc(&seos->credential);
 
     seos->keys_loaded = seos_load_keys(seos);
-
-    seos->bt = furi_record_open(RECORD_BT);
-    bt_disconnect(seos->bt);
-
-    // Wait 2nd core to update nvm storage
-    furi_delay_ms(200);
-    seos->ble_profile = bt_profile_start(seos->bt, ble_profile_seos, NULL);
-    furi_check(seos->ble_profile);
-    bt_set_status_changed_callback(seos->bt, seos_ble_connection_status_callback, seos);
-    ble_profile_seos_set_event_callback(seos->ble_profile, 32, seos_svc_callback, seos);
-    UNUSED(seos_svc_callback);
-    furi_hal_bt_start_advertising();
 
     return seos;
 }
@@ -226,17 +190,6 @@ void seos_free(Seos* seos) {
         seos_emulator_free(seos->seos_emulator);
         seos->seos_emulator = NULL;
     }
-
-    furi_hal_bt_stop_advertising();
-    bt_set_status_changed_callback(seos->bt, NULL, NULL);
-    bt_disconnect(seos->bt);
-
-    // Wait 2nd core to update nvm storage
-    furi_delay_ms(200);
-    bt_keys_storage_set_default_path(seos->bt);
-
-    furi_check(bt_profile_restore_default(seos->bt));
-    furi_record_close(RECORD_BT);
 
     free(seos);
 }

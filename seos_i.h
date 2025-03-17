@@ -29,6 +29,7 @@
 #include "keys.h"
 #include "seos_hci.h"
 #include "seos_characteristic.h"
+#include "seos_native_peripheral.h"
 #include "seos_central.h"
 #include "seos_common.h"
 #include "seos_reader.h"
@@ -36,9 +37,6 @@
 #include "scenes/seos_scene.h"
 #include "des_cmac.h"
 #include "aes_cmac.h"
-
-#include <bt/bt_service/bt.h>
-#include "seos_profile.h"
 
 #define SEOS_TEXT_STORE_SIZE 128
 
@@ -96,7 +94,7 @@ struct Seos {
     SeosReader* seos_reader;
 
     // BLE
-    bool has_ble;
+    bool has_external_ble;
     SeosCharacteristic* seos_characteristic;
     SeosCentral* seos_central;
     FlowMode flow_mode;
@@ -108,6 +106,7 @@ struct Seos {
     bool keys_loaded;
     Bt* bt;
     FuriHalBleProfileBase* ble_profile;
+    SeosNativePeripheral* native_peripheral;
 };
 
 typedef enum {

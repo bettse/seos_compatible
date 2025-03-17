@@ -12,8 +12,13 @@ void seos_scene_ble_peripheral_on_enter(void* context) {
     popup_set_header(popup, "Starting", 68, 20, AlignLeft, AlignTop);
     // popup_set_icon(popup, 0, 3, &I_RFIDDolphinReceive_97x61);
 
-    seos->seos_characteristic = seos_characteristic_alloc(seos);
-    seos_characteristic_start(seos->seos_characteristic, seos->flow_mode);
+    if(seos->has_external_ble) {
+        seos->seos_characteristic = seos_characteristic_alloc(seos);
+        seos_characteristic_start(seos->seos_characteristic, seos->flow_mode);
+    } else {
+        seos->native_peripheral = seos_native_peripheral_alloc(seos);
+        seos_native_peripheral_start(seos->native_peripheral, seos->flow_mode);
+    }
 
     seos_blink_start(seos);
 
@@ -69,6 +74,11 @@ void seos_scene_ble_peripheral_on_exit(void* context) {
         seos_characteristic_stop(seos->seos_characteristic);
         seos_characteristic_free(seos->seos_characteristic);
         seos->seos_characteristic = NULL;
+    }
+    if(seos->native_peripheral) {
+        seos_native_peripheral_stop(seos->native_peripheral);
+        seos_native_peripheral_free(seos->native_peripheral);
+        seos->native_peripheral = NULL;
     }
 
     // Clear view

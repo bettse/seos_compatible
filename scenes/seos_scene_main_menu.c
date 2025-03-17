@@ -26,13 +26,13 @@ void seos_scene_main_menu_on_enter(void* context) {
         submenu, "Saved", SubmenuIndexSaved, seos_scene_main_menu_submenu_callback, seos);
     submenu_add_item(
         submenu, "Read NFC", SubmenuIndexRead, seos_scene_main_menu_submenu_callback, seos);
-    if(seos->has_ble) {
-        submenu_add_item(
-            submenu,
-            "MainMenu BLE Reader",
-            SubmenuIndexBLEReader,
-            seos_scene_main_menu_submenu_callback,
-            seos);
+    submenu_add_item(
+        submenu,
+        "Start BLE Reader",
+        SubmenuIndexBLEReader,
+        seos_scene_main_menu_submenu_callback,
+        seos);
+    if(seos->has_external_ble) {
         submenu_add_item(
             submenu,
             "Scanners >",
