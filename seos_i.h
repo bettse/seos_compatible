@@ -37,6 +37,9 @@
 #include "des_cmac.h"
 #include "aes_cmac.h"
 
+#include <bt/bt_service/bt.h>
+#include "seos_profile.h"
+
 #define SEOS_TEXT_STORE_SIZE 128
 
 enum SeosCustomEvent {
@@ -103,6 +106,8 @@ struct Seos {
     DialogsApp* dialogs;
 
     bool keys_loaded;
+    Bt* bt;
+    FuriHalBleProfileBase* ble_profile;
 };
 
 typedef enum {

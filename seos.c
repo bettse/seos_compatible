@@ -130,6 +130,14 @@ Seos* seos_alloc() {
 
     seos->keys_loaded = seos_load_keys(seos);
 
+    seos->bt = furi_record_open(RECORD_BT);
+    bt_disconnect(seos->bt);
+    // Wait 2nd core to update nvm storage
+    furi_delay_ms(200);
+    //seos->ble_profile = bt_profile_start(seos->bt, ble_profile_seos, NULL);
+    //furi_hal_bt_start_advertising();
+    // bt_set_status_changed_callback
+
     return seos;
 }
 
@@ -190,6 +198,16 @@ void seos_free(Seos* seos) {
         seos_emulator_free(seos->seos_emulator);
         seos->seos_emulator = NULL;
     }
+
+    bt_set_status_changed_callback(seos->bt, NULL, NULL);
+    bt_disconnect(seos->bt);
+
+    // Wait 2nd core to update nvm storage
+    furi_delay_ms(200);
+    bt_keys_storage_set_default_path(seos->bt);
+
+    furi_check(bt_profile_restore_default(seos->bt));
+    furi_record_close(RECORD_BT);
 
     free(seos);
 }
