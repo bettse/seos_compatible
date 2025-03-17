@@ -44,8 +44,8 @@ static void ble_profile_seos_stop(FuriHalBleProfileBase* profile) {
 
 static GapConfig seos_template_config = {
     .adv_service.UUID_Type = UUID_TYPE_128,
-    .adv_service.Char_UUID_128 = BLE_SVC_SEOS_CHAR_UUID,
-    .appearance_char = 0x8600,
+    .adv_service.Char_UUID_128 = BLE_SVC_SEOS_UUID,
+    .adv_name = "Seos",
     .bonding_mode = false,
     .pairing_method = GapPairingNone,
     .conn_param = {
@@ -63,11 +63,6 @@ static void
     memcpy(config, &seos_template_config, sizeof(GapConfig));
     // Set mac address
     memcpy(config->mac_address, furi_hal_version_get_ble_mac(), sizeof(config->mac_address));
-    // Set advertise name
-    strlcpy(
-        config->adv_name,
-        furi_hal_version_get_ble_local_device_name_ptr(),
-        FURI_HAL_VERSION_DEVICE_NAME_LENGTH);
 }
 
 static const FuriHalBleProfileTemplate profile_callbacks = {
