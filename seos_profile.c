@@ -44,7 +44,7 @@ static void ble_profile_seos_stop(FuriHalBleProfileBase* profile) {
 
 static GapConfig seos_template_config = {
     .adv_service.UUID_Type = UUID_TYPE_128,
-    .adv_service.Char_UUID_128 = BLE_SVC_SEOS_UUID,
+    .adv_service.Service_UUID_128 = BLE_SVC_SEOS_UUID,
     .adv_name = "Seos",
     .bonding_mode = false,
     .pairing_method = GapPairingNone,
