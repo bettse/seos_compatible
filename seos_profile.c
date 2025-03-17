@@ -7,7 +7,6 @@
 
 typedef struct {
     FuriHalBleProfileBase base;
-
     BleServiceSeos* seos_svc;
 } BleProfileSeos;
 _Static_assert(offsetof(BleProfileSeos, base) == 0, "Wrong layout");
@@ -90,13 +89,6 @@ void ble_profile_seos_notify_buffer_is_empty(FuriHalBleProfileBase* profile) {
 
     BleProfileSeos* seos_profile = (BleProfileSeos*)profile;
     ble_svc_seos_notify_buffer_is_empty(seos_profile->seos_svc);
-}
-
-void ble_profile_seos_set_rpc_active(FuriHalBleProfileBase* profile, bool active) {
-    furi_check(profile && (profile->config == ble_profile_seos));
-
-    BleProfileSeos* seos_profile = (BleProfileSeos*)profile;
-    ble_svc_seos_set_rpc_active(seos_profile->seos_svc, active);
 }
 
 bool ble_profile_seos_tx(FuriHalBleProfileBase* profile, uint8_t* data, uint16_t size) {

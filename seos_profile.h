@@ -10,11 +10,6 @@ extern "C" {
 
 #define BLE_PROFILE_SEOS_PACKET_SIZE_MAX BLE_SVC_SEOS_DATA_LEN_MAX
 
-typedef enum {
-    FuriHalBtSeosRpcStatusNotActive,
-    FuriHalBtSeosRpcStatusActive,
-} FuriHalBtSeosRpcStatus;
-
 /** Seos service callback type */
 typedef SeosServiceEventCallback FuriHalBtSeosCallback;
 
@@ -30,13 +25,6 @@ extern const FuriHalBleProfileTemplate* ble_profile_seos;
  * @return      true on success
  */
 bool ble_profile_seos_tx(FuriHalBleProfileBase* profile, uint8_t* data, uint16_t size);
-
-/** Set BLE RPC status
- *
- * @param profile       Profile instance
- * @param active        true if RPC is active
- */
-void ble_profile_seos_set_rpc_active(FuriHalBleProfileBase* profile, bool active);
 
 /** Notify that application buffer is empty
  * @param profile       Profile instance

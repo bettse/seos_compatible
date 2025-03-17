@@ -15,15 +15,13 @@
 #define TAG "BtSeosSvc"
 
 typedef enum {
-    SeosSvcGattCharacteristicRx = 0,
-    SeosSvcGattCharacteristicTx,
+    SeosSvcGattCharacteristicRxTx = 0,
     SeosSvcGattCharacteristicFlowCtrl,
-    SeosSvcGattCharacteristicStatus,
     SeosSvcGattCharacteristicCount,
 } SeosSvcGattCharacteristicId;
 
 static const BleGattCharacteristicParams ble_svc_seos_chars[SeosSvcGattCharacteristicCount] = {
-    [SeosSvcGattCharacteristicRx] =
+    [SeosSvcGattCharacteristicRxTx] =
         {.name = "SEOS",
          .data_prop_type = FlipperGattCharacteristicDataFixed,
          .data.fixed.length = BLE_SVC_SEOS_DATA_LEN_MAX,
@@ -56,13 +54,13 @@ static BleEventAckStatus ble_svc_seos_event_handler(void* event, void* context) 
         if(blecore_evt->ecode == ACI_GATT_ATTRIBUTE_MODIFIED_VSEVT_CODE) {
             attribute_modified = (aci_gatt_attribute_modified_event_rp0*)blecore_evt->data;
             if(attribute_modified->Attr_Handle ==
-               seos_svc->chars[SeosSvcGattCharacteristicRx].handle + 2) {
+               seos_svc->chars[SeosSvcGattCharacteristicRxTx].handle + 2) {
                 // Descriptor handle
                 ret = BleEventAckFlowEnable;
                 FURI_LOG_D(TAG, "RX descriptor event");
             } else if(
                 attribute_modified->Attr_Handle ==
-                seos_svc->chars[SeosSvcGattCharacteristicRx].handle + 1) {
+                seos_svc->chars[SeosSvcGattCharacteristicRxTx].handle + 1) {
                 FURI_LOG_D(TAG, "Received %d bytes", attribute_modified->Attr_Data_Length);
                 if(seos_svc->callback) {
                     furi_check(
@@ -88,18 +86,6 @@ static BleEventAckStatus ble_svc_seos_event_handler(void* event, void* context) 
                     furi_check(furi_mutex_release(seos_svc->buff_size_mtx) == FuriStatusOk);
                 }
                 ret = BleEventAckFlowEnable;
-            } else if(
-                attribute_modified->Attr_Handle ==
-                seos_svc->chars[SeosSvcGattCharacteristicStatus].handle + 1) {
-                bool* rpc_status = (bool*)attribute_modified->Attr_Data;
-                if(!*rpc_status) {
-                    if(seos_svc->callback) {
-                        SeosServiceEvent event = {
-                            .event = SeosServiceEventTypesBleResetRequest,
-                        };
-                        seos_svc->callback(event, seos_svc->context);
-                    }
-                }
             }
         } else if(blecore_evt->ecode == ACI_GATT_SERVER_CONFIRMATION_VSEVT_CODE) {
             FURI_LOG_T(TAG, "Ack received");
@@ -115,17 +101,8 @@ static BleEventAckStatus ble_svc_seos_event_handler(void* event, void* context) 
     return ret;
 }
 
-typedef enum {
-    SeosServiceRpcStatusNotActive = 0UL,
-    SeosServiceRpcStatusActive = 1UL,
-} SeosServiceRpcStatus;
-
-static void ble_svc_seos_update_rpc_char(BleServiceSeos* seos_svc, SeosServiceRpcStatus status) {
-    ble_gatt_characteristic_update(
-        seos_svc->svc_handle, &seos_svc->chars[SeosSvcGattCharacteristicStatus], &status);
-}
-
 BleServiceSeos* ble_svc_seos_start(void) {
+    FURI_LOG_D(TAG, "ble_svc_seos_start");
     BleServiceSeos* seos_svc = malloc(sizeof(BleServiceSeos));
 
     seos_svc->event_handler =
@@ -141,7 +118,6 @@ BleServiceSeos* ble_svc_seos_start(void) {
             seos_svc->svc_handle, &ble_svc_seos_chars[i], &seos_svc->chars[i]);
     }
 
-    ble_svc_seos_update_rpc_char(seos_svc, SeosServiceRpcStatusNotActive);
     seos_svc->buff_size_mtx = furi_mutex_alloc(FuriMutexTypeNormal);
 
     return seos_svc;
@@ -197,10 +173,14 @@ void ble_svc_seos_stop(BleServiceSeos* seos_svc) {
 }
 
 bool ble_svc_seos_update_tx(BleServiceSeos* seos_svc, uint8_t* data, uint16_t data_len) {
+    FURI_LOG_D(TAG, "ble_svc_seos_update_tx");
+    UNUSED(seos_svc);
+    UNUSED(data);
     if(data_len > BLE_SVC_SEOS_DATA_LEN_MAX) {
         return false;
     }
 
+    /*
     for(uint16_t remained = data_len; remained > 0;) {
         uint8_t value_len = MIN(BLE_SVC_SEOS_CHAR_VALUE_LEN_MAX, remained);
         uint16_t value_offset = data_len - remained;
@@ -221,12 +201,7 @@ bool ble_svc_seos_update_tx(BleServiceSeos* seos_svc, uint8_t* data, uint16_t da
             return false;
         }
     }
+    */
 
     return true;
-}
-
-void ble_svc_seos_set_rpc_active(BleServiceSeos* seos_svc, bool active) {
-    furi_check(seos_svc);
-    ble_svc_seos_update_rpc_char(
-        seos_svc, active ? SeosServiceRpcStatusActive : SeosServiceRpcStatusNotActive);
 }
