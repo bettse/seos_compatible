@@ -3,6 +3,8 @@
 #include <gap.h>
 #include <furi_ble/profile_interface.h>
 #include "seos_service.h"
+#include "seos_service_uuid.inc"
+#include <ble/core/ble_defs.h>
 #include <furi.h>
 
 #define TAG "SeosProfile"
@@ -41,10 +43,11 @@ static void ble_profile_seos_stop(FuriHalBleProfileBase* profile) {
 #define CONNECTION_INTERVAL_MAX (0x24)
 
 static GapConfig seos_template_config = {
-    .adv_service_uuid = 0x3080,
+    .adv_service.UUID_Type = UUID_TYPE_128,
+    .adv_service.Char_UUID_128 = BLE_SVC_SEOS_CHAR_UUID,
     .appearance_char = 0x8600,
-    .bonding_mode = true,
-    .pairing_method = GapPairingPinCodeShow,
+    .bonding_mode = false,
+    .pairing_method = GapPairingNone,
     .conn_param = {
         .conn_int_min = CONNECTION_INTERVAL_MIN,
         .conn_int_max = CONNECTION_INTERVAL_MAX,
@@ -65,7 +68,6 @@ static void
         config->adv_name,
         furi_hal_version_get_ble_local_device_name_ptr(),
         FURI_HAL_VERSION_DEVICE_NAME_LENGTH);
-    config->adv_service_uuid |= furi_hal_version_get_hw_color();
 }
 
 static const FuriHalBleProfileTemplate profile_callbacks = {
