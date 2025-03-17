@@ -5,6 +5,8 @@
 #include "seos_service.h"
 #include <furi.h>
 
+#define TAG "SeosProfile"
+
 typedef struct {
     FuriHalBleProfileBase base;
     BleServiceSeos* seos_svc;
@@ -12,6 +14,7 @@ typedef struct {
 _Static_assert(offsetof(BleProfileSeos, base) == 0, "Wrong layout");
 
 static FuriHalBleProfileBase* ble_profile_seos_start(FuriHalBleProfileParams profile_params) {
+    FURI_LOG_D(TAG, "ble_profile_seos_start");
     UNUSED(profile_params);
 
     BleProfileSeos* profile = malloc(sizeof(BleProfileSeos));

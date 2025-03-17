@@ -16,14 +16,14 @@
 
 typedef enum {
     SeosSvcGattCharacteristicRxTx = 0,
-    SeosSvcGattCharacteristicFlowCtrl,
     SeosSvcGattCharacteristicCount,
 } SeosSvcGattCharacteristicId;
 
 static const BleGattCharacteristicParams ble_svc_seos_chars[SeosSvcGattCharacteristicCount] = {
     [SeosSvcGattCharacteristicRxTx] =
         {.name = "SEOS",
-         .data_prop_type = FlipperGattCharacteristicDataFixed,
+         .data_prop_type =
+             FlipperGattCharacteristicDataFixed, // FlipperGattCharacteristicDataCallback
          .data.fixed.length = BLE_SVC_SEOS_DATA_LEN_MAX,
          .uuid.Char_UUID_128 = BLE_SVC_SEOS_CHAR_UUID,
          .uuid_type = UUID_TYPE_128,
@@ -45,6 +45,7 @@ struct BleServiceSeos {
 };
 
 static BleEventAckStatus ble_svc_seos_event_handler(void* event, void* context) {
+    FURI_LOG_D(TAG, "ble_svc_seos_event_handler");
     BleServiceSeos* seos_svc = (BleServiceSeos*)context;
     BleEventAckStatus ret = BleEventNotAck;
     hci_event_pckt* event_pckt = (hci_event_pckt*)(((hci_uart_pckt*)event)->data);
@@ -114,6 +115,7 @@ BleServiceSeos* ble_svc_seos_start(void) {
         return NULL;
     }
     for(uint8_t i = 0; i < SeosSvcGattCharacteristicCount; i++) {
+        FURI_LOG_D(TAG, "ble_gatt_characteristic_init %d", i);
         ble_gatt_characteristic_init(
             seos_svc->svc_handle, &ble_svc_seos_chars[i], &seos_svc->chars[i]);
     }
@@ -129,16 +131,19 @@ void ble_svc_seos_set_callbacks(
     SeosServiceEventCallback callback,
     void* context) {
     furi_check(seos_svc);
+    FURI_LOG_D(TAG, "ble_svc_seos_set_callbacks");
     seos_svc->callback = callback;
     seos_svc->context = context;
     seos_svc->buff_size = buff_size;
     seos_svc->bytes_ready_to_receive = buff_size;
 
+    /*
     uint32_t buff_size_reversed = REVERSE_BYTES_U32(seos_svc->buff_size);
     ble_gatt_characteristic_update(
         seos_svc->svc_handle,
         &seos_svc->chars[SeosSvcGattCharacteristicFlowCtrl],
         &buff_size_reversed);
+        */
 }
 
 void ble_svc_seos_notify_buffer_is_empty(BleServiceSeos* seos_svc) {
@@ -150,11 +155,13 @@ void ble_svc_seos_notify_buffer_is_empty(BleServiceSeos* seos_svc) {
         FURI_LOG_D(TAG, "Buffer is empty. Notifying client");
         seos_svc->bytes_ready_to_receive = seos_svc->buff_size;
 
+        /*
         uint32_t buff_size_reversed = REVERSE_BYTES_U32(seos_svc->buff_size);
         ble_gatt_characteristic_update(
             seos_svc->svc_handle,
             &seos_svc->chars[SeosSvcGattCharacteristicFlowCtrl],
             &buff_size_reversed);
+            */
     }
     furi_check(furi_mutex_release(seos_svc->buff_size_mtx) == FuriStatusOk);
 }

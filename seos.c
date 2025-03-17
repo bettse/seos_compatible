@@ -4,6 +4,19 @@
 
 #define SEOS_KEYS_FILENAME "keys"
 
+static void seos_ble_connection_status_callback(BtStatus status, void* context) {
+    furi_assert(context);
+    Seos* seos = context;
+    UNUSED(seos);
+    FURI_LOG_D(TAG, "seos_ble_connection_status_callback %d", (status == BtStatusConnected));
+    /*
+    ble_hid->is_connected = (status == BtStatusConnected);
+    if(ble_hid->state_callback) {
+        ble_hid->state_callback(ble_hid->is_connected, ble_hid->callback_context);
+    }
+    */
+}
+
 bool seos_load_keys(Seos* seos) {
     const char* file_header = "Seos keys";
     const uint32_t file_version = 1;
@@ -134,9 +147,9 @@ Seos* seos_alloc() {
     bt_disconnect(seos->bt);
     // Wait 2nd core to update nvm storage
     furi_delay_ms(200);
-    //seos->ble_profile = bt_profile_start(seos->bt, ble_profile_seos, NULL);
-    //furi_hal_bt_start_advertising();
-    // bt_set_status_changed_callback
+    seos->ble_profile = bt_profile_start(seos->bt, ble_profile_seos, NULL);
+    furi_hal_bt_start_advertising();
+    bt_set_status_changed_callback(seos->bt, seos_ble_connection_status_callback, seos);
 
     return seos;
 }
