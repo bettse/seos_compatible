@@ -16,7 +16,6 @@ typedef struct {
 _Static_assert(offsetof(BleProfileSeos, base) == 0, "Wrong layout");
 
 static FuriHalBleProfileBase* ble_profile_seos_start(FuriHalBleProfileParams profile_params) {
-    FURI_LOG_D(TAG, "ble_profile_seos_start");
     UNUSED(profile_params);
 
     BleProfileSeos* profile = malloc(sizeof(BleProfileSeos));
@@ -99,7 +98,6 @@ void ble_profile_seos_set_event_callback(
     uint16_t buff_size,
     FuriHalBtSeosCallback callback,
     void* context) {
-    FURI_LOG_D(TAG, "ble_profile_seos_set_event_callback");
     furi_check(profile && (profile->config == ble_profile_seos));
 
     BleProfileSeos* seos_profile = (BleProfileSeos*)profile;

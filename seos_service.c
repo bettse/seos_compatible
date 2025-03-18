@@ -25,7 +25,6 @@ typedef struct {
 
 static bool
     ble_svc_seos_data_callback(const void* context, const uint8_t** data, uint16_t* data_len) {
-    FURI_LOG_D(TAG, "ble_svc_seos_data_callback");
     const SeosSvcDataWrapper* report_data = context;
     if(data) {
         *data = report_data->data_ptr;
@@ -63,7 +62,6 @@ struct BleServiceSeos {
 };
 
 static BleEventAckStatus ble_svc_seos_event_handler(void* event, void* context) {
-    FURI_LOG_D(TAG, "ble_svc_seos_event_handler");
     BleServiceSeos* seos_svc = (BleServiceSeos*)context;
     BleEventAckStatus ret = BleEventNotAck;
     hci_event_pckt* event_pckt = (hci_event_pckt*)(((hci_uart_pckt*)event)->data);
@@ -71,11 +69,9 @@ static BleEventAckStatus ble_svc_seos_event_handler(void* event, void* context) 
     aci_gatt_attribute_modified_event_rp0* attribute_modified;
 
     if(event_pckt->evt == HCI_LE_META_EVT_CODE) {
-        // FURI_LOG_D(TAG, "ble_svc_seos_event_handler HCI_LE_META_EVT_CODE %02x", event_pckt->data[0]);
     } else if(event_pckt->evt == HCI_DISCONNECTION_COMPLETE_EVT_CODE) {
     } else if(event_pckt->evt == HCI_VENDOR_SPECIFIC_DEBUG_EVT_CODE) {
         if(blecore_evt->ecode == ACI_GATT_ATTRIBUTE_MODIFIED_VSEVT_CODE) {
-            FURI_LOG_D(TAG, "Process modification events");
             attribute_modified = (aci_gatt_attribute_modified_event_rp0*)blecore_evt->data;
             if(attribute_modified->Attr_Handle ==
                seos_svc->chars[SeosSvcGattCharacteristicRxTx].handle + 2) {
@@ -83,7 +79,6 @@ static BleEventAckStatus ble_svc_seos_event_handler(void* event, void* context) 
                 ret = BleEventAckFlowEnable;
                 if(attribute_modified->Attr_Data_Length == 2) {
                     uint16_t* value = (uint16_t*)attribute_modified->Attr_Data;
-                    FURI_LOG_D(TAG, "descriptor event %04x", *value);
                     if(*value == 1) { // ENABLE_NOTIFICATION_VALUE)
                         uint8_t select[] = {
                             0xc0,
@@ -124,15 +119,6 @@ static BleEventAckStatus ble_svc_seos_event_handler(void* event, void* context) 
                     furi_check(
                         furi_mutex_acquire(seos_svc->buff_size_mtx, FuriWaitForever) ==
                         FuriStatusOk);
-                    if(attribute_modified->Attr_Data_Length > seos_svc->bytes_ready_to_receive) {
-                        FURI_LOG_W(
-                            TAG,
-                            "Received %d, while was ready to receive %d bytes. Can lead to buffer overflow!",
-                            attribute_modified->Attr_Data_Length,
-                            seos_svc->bytes_ready_to_receive);
-                    }
-                    seos_svc->bytes_ready_to_receive -= MIN(
-                        seos_svc->bytes_ready_to_receive, attribute_modified->Attr_Data_Length);
                     SeosServiceEvent event = {
                         .event = SeosServiceEventTypeDataReceived,
                         .data = {
@@ -170,7 +156,6 @@ static BleEventAckStatus ble_svc_seos_event_handler(void* event, void* context) 
 }
 
 BleServiceSeos* ble_svc_seos_start(void) {
-    FURI_LOG_D(TAG, "ble_svc_seos_start");
     BleServiceSeos* seos_svc = malloc(sizeof(BleServiceSeos));
 
     seos_svc->event_handler =
@@ -182,7 +167,6 @@ BleServiceSeos* ble_svc_seos_start(void) {
         return NULL;
     }
     for(uint8_t i = 0; i < SeosSvcGattCharacteristicCount; i++) {
-        FURI_LOG_D(TAG, "ble_gatt_characteristic_init %d", i);
         ble_gatt_characteristic_init(
             seos_svc->svc_handle, &ble_svc_seos_chars[i], &seos_svc->chars[i]);
     }
@@ -198,7 +182,6 @@ void ble_svc_seos_set_callbacks(
     SeosServiceEventCallback callback,
     void* context) {
     furi_check(seos_svc);
-    FURI_LOG_D(TAG, "ble_svc_seos_set_callbacks");
     seos_svc->callback = callback;
     seos_svc->context = context;
     seos_svc->buff_size = buff_size;
@@ -219,7 +202,6 @@ void ble_svc_seos_stop(BleServiceSeos* seos_svc) {
 }
 
 bool ble_svc_seos_update_tx(BleServiceSeos* seos_svc, uint8_t* data, uint16_t data_len) {
-    FURI_LOG_D(TAG, "ble_svc_seos_update_tx");
     if(data_len > BLE_SVC_SEOS_DATA_LEN_MAX) {
         return false;
     }

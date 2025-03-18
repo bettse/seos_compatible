@@ -20,7 +20,6 @@ typedef struct {
 static void seos_ble_connection_status_callback(BtStatus status, void* context) {
     furi_assert(context);
     SeosNativePeripheral* seos_native_peripheral = context;
-    FURI_LOG_D(TAG, "seos_ble_connection_status_callback %d", (status == BtStatusConnected));
     if(status == BtStatusConnected) {
         view_dispatcher_send_custom_event(
             seos_native_peripheral->seos->view_dispatcher, SeosCustomEventConnected);
@@ -144,7 +143,6 @@ void seos_native_peripheral_process_message(
 
     uint8_t* data = message.buf;
     uint8_t* rx_data = data + 1; // Match name to nfc version for easier copying
-    seos_log_buffer(TAG, "seos_svc_callback", data, message.len);
 
     if(data[0] != BLE_START && data[0] != 0xe1) {
         FURI_LOG_W(TAG, "Unexpected start of BLE packet");
