@@ -17,6 +17,9 @@ typedef struct {
     SecureMessaging* secure_messaging;
     SeosCredential* credential;
 
+    FuriMessageQueue* messages;
+    FuriMutex* mq_mutex;
+    FuriThread* thread;
 } SeosNativePeripheral;
 
 SeosNativePeripheral* seos_native_peripheral_alloc(Seos* seos);
