@@ -16,6 +16,7 @@ typedef struct {
     AuthParameters params;
     SecureMessaging* secure_messaging;
     SeosCredential* credential;
+    FlowMode flow_mode;
 
     FuriMessageQueue* messages;
     FuriMutex* mq_mutex;

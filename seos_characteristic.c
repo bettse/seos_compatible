@@ -184,8 +184,6 @@ void seos_characteristic_cred_flow(
     SeosCharacteristic* seos_characteristic,
     BitBuffer* attribute_value,
     BitBuffer* payload) {
-    UNUSED(seos_characteristic);
-
     const uint8_t* data = bit_buffer_get_data(attribute_value);
     const uint8_t* apdu = data + 1; // Match name to nfc version for easier copying
 

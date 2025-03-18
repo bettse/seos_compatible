@@ -62,6 +62,7 @@ struct BleServiceSeos {
     SeosServiceEventCallback callback;
     void* context;
     GapSvcEventHandler* event_handler;
+    FlowMode mode;
 };
 
 static BleEventAckStatus ble_svc_seos_event_handler(void* event, void* context) {
@@ -80,20 +81,23 @@ static BleEventAckStatus ble_svc_seos_event_handler(void* event, void* context) 
                seos_svc->chars[SeosSvcGattCharacteristicRxTx].handle + 2) {
                 // Descriptor handle
                 ret = BleEventAckFlowEnable;
+                FURI_LOG_D(TAG, "Descriptor event %d bytes", attribute_modified->Attr_Data_Length);
+
                 if(attribute_modified->Attr_Data_Length == 2) {
                     uint16_t* value = (uint16_t*)attribute_modified->Attr_Data;
                     if(*value == 1) { // ENABLE_NOTIFICATION_VALUE)
-                        SeosSvcDataWrapper report_data = {
-                            .data_ptr = select, .data_len = sizeof(select)};
+                        if(seos_svc->mode == FLOW_READER) {
+                            SeosSvcDataWrapper report_data = {
+                                .data_ptr = select, .data_len = sizeof(select)};
 
-                        ble_gatt_characteristic_update(
-                            seos_svc->svc_handle,
-                            &seos_svc->chars[SeosSvcGattCharacteristicRxTx],
-                            &report_data);
+                            ble_gatt_characteristic_update(
+                                seos_svc->svc_handle,
+                                &seos_svc->chars[SeosSvcGattCharacteristicRxTx],
+                                &report_data);
+                        } else if(seos_svc->mode == FLOW_CRED) {
+                            FURI_LOG_D(TAG, "No action for FLOW_CRED after subscribe");
+                        }
                     }
-                } else {
-                    FURI_LOG_D(
-                        TAG, "descriptor event %d bytes", attribute_modified->Attr_Data_Length);
                 }
             } else if(
                 attribute_modified->Attr_Handle ==
@@ -141,6 +145,7 @@ static BleEventAckStatus ble_svc_seos_event_handler(void* event, void* context) 
 
 BleServiceSeos* ble_svc_seos_start(FlowMode mode) {
     BleServiceSeos* seos_svc = malloc(sizeof(BleServiceSeos));
+    seos_svc->mode = mode;
 
     seos_svc->event_handler =
         ble_event_dispatcher_register_svc_handler(ble_svc_seos_event_handler, seos_svc);
