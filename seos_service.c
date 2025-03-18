@@ -1,6 +1,5 @@
 #include "seos_service.h"
 #include "app_common.h"
-//#include <ble/ble.h>
 #include <furi_ble/event_dispatcher.h>
 #include <furi_ble/gatt.h>
 
@@ -242,11 +241,15 @@ void ble_svc_seos_stop(BleServiceSeos* seos_svc) {
 
 bool ble_svc_seos_update_tx(BleServiceSeos* seos_svc, uint8_t* data, uint16_t data_len) {
     FURI_LOG_D(TAG, "ble_svc_seos_update_tx");
-    UNUSED(seos_svc);
-    UNUSED(data);
     if(data_len > BLE_SVC_SEOS_DATA_LEN_MAX) {
         return false;
     }
+
+    SeosSvcDataWrapper report_data = {.data_ptr = data, .data_len = data_len};
+
+    ble_gatt_characteristic_update(
+        seos_svc->svc_handle, &seos_svc->chars[SeosSvcGattCharacteristicRxTx], &report_data);
+    /*
 
     for(uint16_t remained = data_len; remained > 0;) {
         uint8_t value_len = MIN(BLE_SVC_SEOS_CHAR_VALUE_LEN_MAX, remained);
@@ -268,6 +271,7 @@ bool ble_svc_seos_update_tx(BleServiceSeos* seos_svc, uint8_t* data, uint16_t da
             return false;
         }
     }
+    */
 
     return true;
 }

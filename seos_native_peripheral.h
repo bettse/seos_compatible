@@ -1,6 +1,7 @@
 #pragma once
 
 #include <bt/bt_service/bt.h>
+#include "seos_common.h"
 #include "seos_profile.h"
 
 typedef struct {
@@ -8,6 +9,14 @@ typedef struct {
 
     Bt* bt;
     FuriHalBleProfileBase* ble_profile;
+
+    uint8_t event_buffer[128];
+
+    SeosPhase phase;
+    AuthParameters params;
+    SecureMessaging* secure_messaging;
+    SeosCredential* credential;
+
 } SeosNativePeripheral;
 
 SeosNativePeripheral* seos_native_peripheral_alloc(Seos* seos);
