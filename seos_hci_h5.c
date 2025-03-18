@@ -67,6 +67,7 @@ void seos_hci_h5_free(SeosHciH5* seos_hci_h5) {
 
     furi_message_queue_free(seos_hci_h5->messages);
     furi_mutex_free(seos_hci_h5->mq_mutex);
+    furi_thread_free(seos_hci_h5->thread);
     seos_uart_free(seos_hci_h5->uart);
     free(seos_hci_h5);
 }
@@ -82,7 +83,6 @@ void seos_hci_h5_stop(SeosHciH5* seos_hci_h5) {
     seos_hci_h5->stage = STOPPED;
     furi_thread_flags_set(furi_thread_get_id(seos_hci_h5->thread), WorkerEvtStop);
     furi_thread_join(seos_hci_h5->thread);
-    furi_thread_free(seos_hci_h5->thread);
 }
 
 void seos_hci_h5_peer_reset(SeosHciH5* seos_hci_h5) {
