@@ -205,27 +205,6 @@ void ble_svc_seos_set_callbacks(
     seos_svc->bytes_ready_to_receive = buff_size;
 }
 
-void ble_svc_seos_notify_buffer_is_empty(BleServiceSeos* seos_svc) {
-    furi_check(seos_svc);
-    furi_check(seos_svc->buff_size_mtx);
-    FURI_LOG_D(TAG, "ble_svc_seos_notify_buffer_is_empty");
-
-    furi_check(furi_mutex_acquire(seos_svc->buff_size_mtx, FuriWaitForever) == FuriStatusOk);
-    if(seos_svc->bytes_ready_to_receive == 0) {
-        FURI_LOG_D(TAG, "Buffer is empty. Notifying client");
-        seos_svc->bytes_ready_to_receive = seos_svc->buff_size;
-
-        /*
-        uint32_t buff_size_reversed = REVERSE_BYTES_U32(seos_svc->buff_size);
-        ble_gatt_characteristic_update(
-            seos_svc->svc_handle,
-            &seos_svc->chars[SeosSvcGattCharacteristicFlowCtrl],
-            &buff_size_reversed);
-            */
-    }
-    furi_check(furi_mutex_release(seos_svc->buff_size_mtx) == FuriStatusOk);
-}
-
 void ble_svc_seos_stop(BleServiceSeos* seos_svc) {
     furi_check(seos_svc);
 
