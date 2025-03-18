@@ -1,10 +1,10 @@
 #include "seos_service.h"
-#include "app_common.h"
+#include "headers/app_common.h"
 #include <furi_ble/event_dispatcher.h>
 #include <furi_ble/gatt.h>
 
-#include "ble_vs_codes.h"
-#include "ble_gatt_aci.h"
+#include "headers/ble_vs_codes.h"
+#include "headers/ble_gatt_aci.h"
 
 #include <furi.h>
 
