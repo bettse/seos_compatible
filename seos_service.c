@@ -210,29 +210,6 @@ bool ble_svc_seos_update_tx(BleServiceSeos* seos_svc, uint8_t* data, uint16_t da
 
     ble_gatt_characteristic_update(
         seos_svc->svc_handle, &seos_svc->chars[SeosSvcGattCharacteristicRxTx], &report_data);
-    /*
-
-    for(uint16_t remained = data_len; remained > 0;) {
-        uint8_t value_len = MIN(BLE_SVC_SEOS_CHAR_VALUE_LEN_MAX, remained);
-        uint16_t value_offset = data_len - remained;
-        remained -= value_len;
-
-        tBleStatus result = aci_gatt_update_char_value_ext(
-            0,
-            seos_svc->svc_handle,
-            seos_svc->chars[SeosSvcGattCharacteristicRxTx].handle,
-            remained ? 0x00 : 0x02,
-            data_len,
-            value_offset,
-            value_len,
-            data + value_offset);
-
-        if(result) {
-            FURI_LOG_E(TAG, "Failed updating TX characteristic: %d", result);
-            return false;
-        }
-    }
-    */
 
     return true;
 }
