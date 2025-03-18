@@ -104,13 +104,6 @@ void ble_profile_seos_set_event_callback(
     ble_svc_seos_set_callbacks(seos_profile->seos_svc, buff_size, callback, context);
 }
 
-void ble_profile_seos_notify_buffer_is_empty(FuriHalBleProfileBase* profile) {
-    furi_check(profile && (profile->config == ble_profile_seos));
-
-    BleProfileSeos* seos_profile = (BleProfileSeos*)profile;
-    ble_svc_seos_notify_buffer_is_empty(seos_profile->seos_svc);
-}
-
 bool ble_profile_seos_tx(FuriHalBleProfileBase* profile, uint8_t* data, uint16_t size) {
     furi_check(profile && (profile->config == ble_profile_seos));
 

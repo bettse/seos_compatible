@@ -26,11 +26,6 @@ extern const FuriHalBleProfileTemplate* ble_profile_seos;
  */
 bool ble_profile_seos_tx(FuriHalBleProfileBase* profile, uint8_t* data, uint16_t size);
 
-/** Notify that application buffer is empty
- * @param profile       Profile instance
- */
-void ble_profile_seos_notify_buffer_is_empty(FuriHalBleProfileBase* profile);
-
 /** Set Seos service events callback
  *
  * @param profile       Profile instance
