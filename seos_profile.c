@@ -12,17 +12,18 @@
 typedef struct {
     FuriHalBleProfileBase base;
     BleServiceSeos* seos_svc;
+    FuriHalBleProfileParams params;
 } BleProfileSeos;
 _Static_assert(offsetof(BleProfileSeos, base) == 0, "Wrong layout");
 
 static FuriHalBleProfileBase* ble_profile_seos_start(FuriHalBleProfileParams profile_params) {
-    UNUSED(profile_params);
-
     BleProfileSeos* profile = malloc(sizeof(BleProfileSeos));
+    BleProfileParams* params = profile_params;
 
+    profile->params = profile_params;
     profile->base.config = ble_profile_seos;
 
-    profile->seos_svc = ble_svc_seos_start();
+    profile->seos_svc = ble_svc_seos_start(params->mode);
 
     return &profile->base;
 }
@@ -41,9 +42,9 @@ static void ble_profile_seos_stop(FuriHalBleProfileBase* profile) {
 // Up to 45 ms
 #define CONNECTION_INTERVAL_MAX (0x24)
 
-static GapConfig seos_template_config = {
+static GapConfig seos_reader_template_config = {
     .adv_service.UUID_Type = UUID_TYPE_128,
-    .adv_service.Service_UUID_128 = BLE_SVC_SEOS_UUID,
+    .adv_service.Service_UUID_128 = BLE_SVC_SEOS_READER_UUID,
     .mfg_data =
         {0x2e,
          0x01,
@@ -75,12 +76,30 @@ static GapConfig seos_template_config = {
         .supervisor_timeout = 0,
     }};
 
+static GapConfig seos_cred_template_config = {
+    .adv_service.UUID_Type = UUID_TYPE_128,
+    .adv_service.Service_UUID_128 = BLE_SVC_SEOS_CRED_UUID,
+    .adv_name = "Seos",
+    .bonding_mode = false,
+    .pairing_method = GapPairingNone,
+    .conn_param = {
+        .conn_int_min = CONNECTION_INTERVAL_MIN,
+        .conn_int_max = CONNECTION_INTERVAL_MAX,
+        .slave_latency = 0,
+        .supervisor_timeout = 0,
+    }};
+
 static void
     ble_profile_seos_get_config(GapConfig* config, FuriHalBleProfileParams profile_params) {
-    UNUSED(profile_params);
+    BleProfileParams* params = profile_params;
 
+    FURI_LOG_D(TAG, "ble_profile_seos_get_config FlowMode %d", params->mode);
     furi_check(config);
-    memcpy(config, &seos_template_config, sizeof(GapConfig));
+    if(params->mode == FLOW_READER) {
+        memcpy(config, &seos_reader_template_config, sizeof(GapConfig));
+    } else if(params->mode == FLOW_CRED) {
+        memcpy(config, &seos_cred_template_config, sizeof(GapConfig));
+    }
     // Set mac address
     memcpy(config->mac_address, furi_hal_version_get_ble_mac(), sizeof(config->mac_address));
 }

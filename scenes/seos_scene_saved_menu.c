@@ -28,13 +28,14 @@ void seos_scene_saved_menu_on_enter(void* context) {
             SubmenuIndexBLEEmulateCentral,
             seos_scene_saved_menu_submenu_callback,
             seos);
-        submenu_add_item(
-            submenu,
-            "BLE Emulate Peripheral",
-            SubmenuIndexBLEEmulatePeripheral,
-            seos_scene_saved_menu_submenu_callback,
-            seos);
     }
+    submenu_add_item(
+        submenu,
+        "BLE Emulate Peripheral",
+        SubmenuIndexBLEEmulatePeripheral,
+        seos_scene_saved_menu_submenu_callback,
+        seos);
+
     submenu_add_item(
         submenu, "Info", SubmenuIndexInfo, seos_scene_saved_menu_submenu_callback, seos);
     submenu_add_item(

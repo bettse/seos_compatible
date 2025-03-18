@@ -13,6 +13,9 @@
 
 #define TAG "BtSeosSvc"
 
+static uint8_t select[] =
+    {0xc0, 0x00, 0xa4, 0x04, 0x00, 0x0a, 0xa0, 0x00, 0x00, 0x04, 0x40, 0x00, 0x01, 0x01, 0x00, 0x01};
+
 typedef enum {
     SeosSvcGattCharacteristicRxTx = 0,
     SeosSvcGattCharacteristicCount,
@@ -25,6 +28,7 @@ typedef struct {
 
 static bool
     ble_svc_seos_data_callback(const void* context, const uint8_t** data, uint16_t* data_len) {
+    FURI_LOG_D(TAG, "ble_svc_seos_data_callback");
     const SeosSvcDataWrapper* report_data = context;
     if(data) {
         *data = report_data->data_ptr;
@@ -35,14 +39,13 @@ static bool
     return false;
 }
 
-static const BleGattCharacteristicParams ble_svc_seos_chars[SeosSvcGattCharacteristicCount] = {
+static BleGattCharacteristicParams ble_svc_seos_chars[SeosSvcGattCharacteristicCount] = {
     [SeosSvcGattCharacteristicRxTx] =
         {.name = "SEOS",
          .data_prop_type = FlipperGattCharacteristicDataCallback,
          .data.callback.fn = ble_svc_seos_data_callback,
          .data.callback.context = NULL,
-         //.max_length = BLE_SVC_SEOS_DATA_LEN_MAX,
-         .uuid.Char_UUID_128 = BLE_SVC_SEOS_CHAR_UUID,
+         .uuid.Char_UUID_128 = BLE_SVC_SEOS_READER_CHAR_UUID, // changed before init
          .uuid_type = UUID_TYPE_128,
          .char_properties = CHAR_PROP_WRITE_WITHOUT_RESP | CHAR_PROP_NOTIFY,
          .security_permissions = ATTR_PERMISSION_NONE,
@@ -80,24 +83,6 @@ static BleEventAckStatus ble_svc_seos_event_handler(void* event, void* context) 
                 if(attribute_modified->Attr_Data_Length == 2) {
                     uint16_t* value = (uint16_t*)attribute_modified->Attr_Data;
                     if(*value == 1) { // ENABLE_NOTIFICATION_VALUE)
-                        uint8_t select[] = {
-                            0xc0,
-                            0x00,
-                            0xa4,
-                            0x04,
-                            0x00,
-                            0x0a,
-                            0xa0,
-                            0x00,
-                            0x00,
-                            0x04,
-                            0x40,
-                            0x00,
-                            0x01,
-                            0x01,
-                            0x00,
-                            0x01};
-
                         SeosSvcDataWrapper report_data = {
                             .data_ptr = select, .data_len = sizeof(select)};
 
@@ -110,7 +95,6 @@ static BleEventAckStatus ble_svc_seos_event_handler(void* event, void* context) 
                     FURI_LOG_D(
                         TAG, "descriptor event %d bytes", attribute_modified->Attr_Data_Length);
                 }
-
             } else if(
                 attribute_modified->Attr_Handle ==
                 seos_svc->chars[SeosSvcGattCharacteristicRxTx].handle + 1) {
@@ -155,20 +139,44 @@ static BleEventAckStatus ble_svc_seos_event_handler(void* event, void* context) 
     return ret;
 }
 
-BleServiceSeos* ble_svc_seos_start(void) {
+BleServiceSeos* ble_svc_seos_start(FlowMode mode) {
     BleServiceSeos* seos_svc = malloc(sizeof(BleServiceSeos));
 
     seos_svc->event_handler =
         ble_event_dispatcher_register_svc_handler(ble_svc_seos_event_handler, seos_svc);
 
-    if(!ble_gatt_service_add(
-           UUID_TYPE_128, &service_uuid, PRIMARY_SERVICE, 12, &seos_svc->svc_handle)) {
-        free(seos_svc);
-        return NULL;
+    if(mode == FLOW_READER) {
+        if(!ble_gatt_service_add(
+               UUID_TYPE_128, &reader_service_uuid, PRIMARY_SERVICE, 12, &seos_svc->svc_handle)) {
+            free(seos_svc);
+            return NULL;
+        }
+    } else if(mode == FLOW_CRED) {
+        if(!ble_gatt_service_add(
+               UUID_TYPE_128, &cred_service_uuid, PRIMARY_SERVICE, 12, &seos_svc->svc_handle)) {
+            free(seos_svc);
+            return NULL;
+        }
     }
+
     for(uint8_t i = 0; i < SeosSvcGattCharacteristicCount; i++) {
-        ble_gatt_characteristic_init(
-            seos_svc->svc_handle, &ble_svc_seos_chars[i], &seos_svc->chars[i]);
+        if(i == SeosSvcGattCharacteristicRxTx) {
+            if(mode == FLOW_READER) {
+                uint8_t uuid[] = BLE_SVC_SEOS_READER_CHAR_UUID;
+                memcpy(
+                    ble_svc_seos_chars[SeosSvcGattCharacteristicRxTx].uuid.Char_UUID_128,
+                    uuid,
+                    sizeof(uuid));
+            } else if(mode == FLOW_CRED) {
+                uint8_t uuid[] = BLE_SVC_SEOS_CRED_CHAR_UUID;
+                memcpy(
+                    ble_svc_seos_chars[SeosSvcGattCharacteristicRxTx].uuid.Char_UUID_128,
+                    uuid,
+                    sizeof(uuid));
+            }
+            ble_gatt_characteristic_init(
+                seos_svc->svc_handle, &ble_svc_seos_chars[i], &seos_svc->chars[i]);
+        }
     }
 
     seos_svc->buff_size_mtx = furi_mutex_alloc(FuriMutexTypeNormal);

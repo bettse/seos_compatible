@@ -102,10 +102,14 @@ void seos_native_peripheral_start(SeosNativePeripheral* seos_native_peripheral, 
     UNUSED(mode);
     bt_disconnect(seos_native_peripheral->bt);
 
+    BleProfileParams params = {
+        .mode = mode,
+    };
+
     // Wait 2nd core to update nvm storage
     furi_delay_ms(200);
     seos_native_peripheral->ble_profile =
-        bt_profile_start(seos_native_peripheral->bt, ble_profile_seos, NULL);
+        bt_profile_start(seos_native_peripheral->bt, ble_profile_seos, &params);
     furi_check(seos_native_peripheral->ble_profile);
     bt_set_status_changed_callback(
         seos_native_peripheral->bt, seos_ble_connection_status_callback, seos_native_peripheral);

@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "seos_common.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -34,7 +35,7 @@ typedef uint16_t (*SeosServiceEventCallback)(SeosServiceEvent event, void* conte
 
 typedef struct BleServiceSeos BleServiceSeos;
 
-BleServiceSeos* ble_svc_seos_start(void);
+BleServiceSeos* ble_svc_seos_start(FlowMode mode);
 
 void ble_svc_seos_stop(BleServiceSeos* service);
 
