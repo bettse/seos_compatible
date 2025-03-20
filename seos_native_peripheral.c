@@ -412,6 +412,7 @@ void seos_native_peripheral_process_message_reader(
         //ignore
     } else {
         FURI_LOG_W(TAG, "No match for write request");
+        seos_log_buffer(TAG, "No match for reader incoming", message.buf, message.len);
     }
 
     if(bit_buffer_get_size_bytes(response) > 0) {
