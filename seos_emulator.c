@@ -617,7 +617,14 @@ NfcCommand seos_worker_listener_callback(NfcGenericEvent event, void* context) {
 
         if(bit_buffer_get_size_bytes(seos_emulator->tx_buffer) >
            offset) { // contents belong iso framing
-            bit_buffer_append_bytes(tx_buffer, success, sizeof(success));
+
+            if(memcmp(
+                   FILE_NOT_FOUND,
+                   bit_buffer_get_data(tx_buffer) + bit_buffer_get_size_bytes(tx_buffer) -
+                       sizeof(FILE_NOT_FOUND),
+                   sizeof(FILE_NOT_FOUND)) != 0) {
+                bit_buffer_append_bytes(tx_buffer, success, sizeof(success));
+            }
 
             iso14443_crc_append(Iso14443CrcTypeA, tx_buffer);
 
