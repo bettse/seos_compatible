@@ -504,9 +504,11 @@ NfcCommand seos_worker_listener_inspect_reader(Seos* seos) {
 
             bit_buffer_append_bytes(tx_buffer, enableInspection, sizeof(enableInspection));
             view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventAIDSelected);
+        } else {
+            bit_buffer_append_bytes(tx_buffer, (uint8_t*)FILE_NOT_FOUND, sizeof(FILE_NOT_FOUND));
         }
-    } else if(bit_buffer_get_size_bytes(seos_emulator->rx_buffer) > offset) {
-        FURI_LOG_I(TAG, "NFC stop");
+    } else if(bit_buffer_get_size_bytes(seos_emulator->rx_buffer) > (size_t)(offset + 2)) {
+        FURI_LOG_I(TAG, "NFC stop; %d bytes", bit_buffer_get_size_bytes(seos_emulator->rx_buffer));
         ret = NfcCommandStop;
     }
 
