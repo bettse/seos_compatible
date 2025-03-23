@@ -6,6 +6,11 @@
 
 static uint8_t select_header[] = {0x00, 0xa4, 0x04, 0x00};
 static uint8_t standard_seos_aid[] = {0xa0, 0x00, 0x00, 0x04, 0x40, 0x00, 0x01, 0x01, 0x00, 0x01};
+static uint8_t MOBILE_SEOS_ADMIN_CARD[] =
+    {0xa0, 0x00, 0x00, 0x03, 0x82, 0x00, 0x2d, 0x00, 0x01, 0x01};
+static uint8_t OPERATION_SELECTOR[] = {0xa0, 0x00, 0x00, 0x03, 0x82, 0x00, 0x2f, 0x00, 0x01, 0x01};
+static uint8_t OPERATION_SELECTOR_POST_RESET[] =
+    {0xa0, 0x00, 0x00, 0x03, 0x82, 0x00, 0x31, 0x00, 0x01, 0x01};
 
 static uint8_t SEOS_APPLET_FCI[] =
     {0x6F, 0x0C, 0x84, 0x0A, 0xA0, 0x00, 0x00, 0x04, 0x40, 0x00, 0x01, 0x01, 0x00, 0x01};
@@ -478,6 +483,140 @@ void seos_emulator_select_adf(
     seos_log_bitbuffer(TAG, "Select ADF (0xcd02...)", tx_buffer);
 }
 
+NfcCommand seos_worker_listener_process_message(Seos* seos) {
+    SeosEmulator* seos_emulator = seos->seos_emulator;
+    BitBuffer* tx_buffer = seos_emulator->tx_buffer;
+    NfcCommand ret = NfcCommandContinue;
+
+    const uint8_t* rx_data = bit_buffer_get_data(seos_emulator->rx_buffer);
+    bool NAD = (rx_data[0] & NAD_MASK) == NAD_MASK;
+    uint8_t offset = NAD ? 2 : 1;
+
+    // + x to skip stuff before APDU
+    const uint8_t* apdu = rx_data + offset;
+
+    if(memcmp(apdu, select_header, sizeof(select_header)) == 0) {
+        if(memcmp(apdu + sizeof(select_header) + 1, standard_seos_aid, sizeof(standard_seos_aid)) ==
+           0) {
+            seos_emulator_select_aid(seos_emulator->tx_buffer);
+            view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventAIDSelected);
+
+        } else if(
+            memcmp(
+                apdu + sizeof(select_header) + 1,
+                OPERATION_SELECTOR_POST_RESET,
+                sizeof(OPERATION_SELECTOR_POST_RESET)) == 0) {
+            FURI_LOG_I(TAG, "OPERATION_SELECTOR_POST_RESET");
+            bit_buffer_append_bytes(
+                seos_emulator->tx_buffer, (uint8_t*)FILE_NOT_FOUND, sizeof(FILE_NOT_FOUND));
+        } else if(
+            memcmp(
+                apdu + sizeof(select_header) + 1,
+                OPERATION_SELECTOR,
+                sizeof(OPERATION_SELECTOR)) == 0) {
+            FURI_LOG_I(TAG, "OPERATION_SELECTOR");
+            bit_buffer_append_bytes(
+                seos_emulator->tx_buffer, (uint8_t*)FILE_NOT_FOUND, sizeof(FILE_NOT_FOUND));
+        } else if(
+            memcmp(
+                apdu + sizeof(select_header) + 1,
+                MOBILE_SEOS_ADMIN_CARD,
+                sizeof(MOBILE_SEOS_ADMIN_CARD)) == 0) {
+            FURI_LOG_I(TAG, "MOBILE_SEOS_ADMIN_CARD");
+            bit_buffer_append_bytes(
+                seos_emulator->tx_buffer, (uint8_t*)FILE_NOT_FOUND, sizeof(FILE_NOT_FOUND));
+        } else {
+            seos_log_bitbuffer(TAG, "Reject select", seos_emulator->rx_buffer);
+            bit_buffer_append_bytes(
+                seos_emulator->tx_buffer, (uint8_t*)FILE_NOT_FOUND, sizeof(FILE_NOT_FOUND));
+        }
+    } else if(memcmp(apdu, select_adf_header, sizeof(select_adf_header)) == 0) {
+        // is our adf in the list?
+        // +1 to skip APDU length byte
+        void* p = memmem(
+            apdu + sizeof(select_adf_header) + 1,
+            apdu[sizeof(select_adf_header)],
+            SEOS_ADF_OID,
+            SEOS_ADF_OID_LEN);
+        if(p) {
+            BitBuffer* tmp = bit_buffer_alloc(SEOS_ADF_OID_LEN);
+            bit_buffer_append_bytes(tmp, p, SEOS_ADF_OID_LEN);
+            seos_log_bitbuffer(TAG, "Matched ADF", tmp);
+            bit_buffer_free(tmp);
+            view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventADFMatched);
+
+            seos_emulator_select_adf(
+                &seos_emulator->params, seos_emulator->credential, seos_emulator->tx_buffer);
+        } else {
+            FURI_LOG_W(TAG, "Failed to match any ADF OID");
+        }
+    } else if(memcmp(apdu, general_authenticate_1, sizeof(general_authenticate_1)) == 0) {
+        seos_emulator_general_authenticate_1(seos_emulator->tx_buffer, seos_emulator->params);
+    } else if(memcmp(apdu, general_authenticate_2_header, sizeof(general_authenticate_2_header)) == 0) {
+        if(!seos_emulator_general_authenticate_2(
+               apdu,
+               bit_buffer_get_size_bytes(seos_emulator->rx_buffer),
+               seos_emulator->credential,
+               &seos_emulator->params,
+               seos_emulator->tx_buffer)) {
+            FURI_LOG_W(TAG, "Failure in General Authenticate 2");
+            ret = NfcCommandStop;
+            return ret;
+        }
+        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventAuthenticated);
+        // Prepare for future communication
+        seos_emulator->secure_messaging = secure_messaging_alloc(&seos_emulator->params);
+    } else if(memcmp(apdu, secure_messaging_header, sizeof(secure_messaging_header)) == 0) {
+        uint8_t request_sio[] = {0x5c, 0x02, 0xff, 0x00};
+
+        if(seos_emulator->secure_messaging) {
+            FURI_LOG_D(TAG, "Unwrap secure message");
+
+            // 0b00 0ccb3fff 16 8508fa8395d30de4e8e097008e085da7edbd833b002d00
+            // Ignore 2 iso frame bytes
+            size_t bytes_to_ignore = offset;
+            BitBuffer* tmp = bit_buffer_alloc(bit_buffer_get_size_bytes(seos_emulator->rx_buffer));
+            bit_buffer_append_bytes(
+                tmp,
+                bit_buffer_get_data(seos_emulator->rx_buffer) + bytes_to_ignore,
+                bit_buffer_get_size_bytes(seos_emulator->rx_buffer) - bytes_to_ignore);
+
+            seos_log_bitbuffer(TAG, "NFC received(wrapped)", tmp);
+            secure_messaging_unwrap_apdu(seos_emulator->secure_messaging, tmp);
+            seos_log_bitbuffer(TAG, "NFC received(clear)", tmp);
+
+            const uint8_t* message = bit_buffer_get_data(tmp);
+            if(memcmp(message, request_sio, sizeof(request_sio)) == 0) {
+                view_dispatcher_send_custom_event(
+                    seos->view_dispatcher, SeosCustomEventSIORequested);
+                BitBuffer* sio_file = bit_buffer_alloc(128);
+                bit_buffer_append_bytes(sio_file, message + 2, 2); // fileId
+                bit_buffer_append_byte(sio_file, seos_emulator->credential->sio_len);
+                bit_buffer_append_bytes(
+                    sio_file, seos_emulator->credential->sio, seos_emulator->credential->sio_len);
+
+                secure_messaging_wrap_rapdu(
+                    seos_emulator->secure_messaging,
+                    (uint8_t*)bit_buffer_get_data(sio_file),
+                    bit_buffer_get_size_bytes(sio_file),
+                    tx_buffer);
+
+                bit_buffer_free(sio_file);
+            }
+
+            bit_buffer_free(tmp);
+        } else {
+            uint8_t no_sm[] = {0x69, 0x88};
+            bit_buffer_append_bytes(tx_buffer, no_sm, sizeof(no_sm));
+        }
+    } else {
+        // I'm trying to find a good place to re-assert that we're emulating so we don't get stuck on a previous UI screen when we emulate repeatedly
+        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventEmulate);
+    }
+
+    return ret;
+}
+
 NfcCommand seos_worker_listener_callback(NfcGenericEvent event, void* context) {
     furi_assert(context);
     furi_assert(event.protocol == NfcProtocolIso14443_4a);
@@ -505,116 +644,13 @@ NfcCommand seos_worker_listener_callback(NfcGenericEvent event, void* context) {
             break;
         }
 
-        // + x to skip stuff before APDU
-        const uint8_t* apdu = rx_data + offset;
-
         seos_log_bitbuffer(TAG, "NFC received", seos_emulator->rx_buffer);
 
         // Some ISO14443a framing I need to figure out
         bit_buffer_append_bytes(tx_buffer, rx_data, offset);
 
-        if(memcmp(apdu, select_header, sizeof(select_header)) == 0) {
-            if(memcmp(
-                   apdu + sizeof(select_header) + 1,
-                   standard_seos_aid,
-                   sizeof(standard_seos_aid)) == 0) {
-                seos_emulator_select_aid(seos_emulator->tx_buffer);
-                view_dispatcher_send_custom_event(
-                    seos->view_dispatcher, SeosCustomEventAIDSelected);
-            } else {
-                seos_log_bitbuffer(TAG, "Reject select", seos_emulator->rx_buffer);
-                bit_buffer_append_bytes(
-                    seos_emulator->tx_buffer, (uint8_t*)FILE_NOT_FOUND, sizeof(FILE_NOT_FOUND));
-            }
-        } else if(memcmp(apdu, select_adf_header, sizeof(select_adf_header)) == 0) {
-            // is our adf in the list?
-            // +1 to skip APDU length byte
-            void* p = memmem(
-                apdu + sizeof(select_adf_header) + 1,
-                apdu[sizeof(select_adf_header)],
-                SEOS_ADF_OID,
-                SEOS_ADF_OID_LEN);
-            if(p) {
-                BitBuffer* tmp = bit_buffer_alloc(SEOS_ADF_OID_LEN);
-                bit_buffer_append_bytes(tmp, p, SEOS_ADF_OID_LEN);
-                seos_log_bitbuffer(TAG, "Matched ADF", tmp);
-                bit_buffer_free(tmp);
-                view_dispatcher_send_custom_event(
-                    seos->view_dispatcher, SeosCustomEventADFMatched);
-
-                seos_emulator_select_adf(
-                    &seos_emulator->params, seos_emulator->credential, seos_emulator->tx_buffer);
-            } else {
-                FURI_LOG_W(TAG, "Failed to match any ADF OID");
-            }
-        } else if(memcmp(apdu, general_authenticate_1, sizeof(general_authenticate_1)) == 0) {
-            seos_emulator_general_authenticate_1(seos_emulator->tx_buffer, seos_emulator->params);
-        } else if(
-            memcmp(apdu, general_authenticate_2_header, sizeof(general_authenticate_2_header)) ==
-            0) {
-            if(!seos_emulator_general_authenticate_2(
-                   apdu,
-                   bit_buffer_get_size_bytes(seos_emulator->rx_buffer),
-                   seos_emulator->credential,
-                   &seos_emulator->params,
-                   seos_emulator->tx_buffer)) {
-                FURI_LOG_W(TAG, "Failure in General Authenticate 2");
-                ret = NfcCommandStop;
-                return ret;
-            }
-            view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventAuthenticated);
-            // Prepare for future communication
-            seos_emulator->secure_messaging = secure_messaging_alloc(&seos_emulator->params);
-        } else if(memcmp(apdu, secure_messaging_header, sizeof(secure_messaging_header)) == 0) {
-            uint8_t request_sio[] = {0x5c, 0x02, 0xff, 0x00};
-
-            if(seos_emulator->secure_messaging) {
-                FURI_LOG_D(TAG, "Unwrap secure message");
-
-                // 0b00 0ccb3fff 16 8508fa8395d30de4e8e097008e085da7edbd833b002d00
-                // Ignore 2 iso frame bytes
-                size_t bytes_to_ignore = offset;
-                BitBuffer* tmp =
-                    bit_buffer_alloc(bit_buffer_get_size_bytes(seos_emulator->rx_buffer));
-                bit_buffer_append_bytes(
-                    tmp,
-                    bit_buffer_get_data(seos_emulator->rx_buffer) + bytes_to_ignore,
-                    bit_buffer_get_size_bytes(seos_emulator->rx_buffer) - bytes_to_ignore);
-
-                seos_log_bitbuffer(TAG, "NFC received(wrapped)", tmp);
-                secure_messaging_unwrap_apdu(seos_emulator->secure_messaging, tmp);
-                seos_log_bitbuffer(TAG, "NFC received(clear)", tmp);
-
-                const uint8_t* message = bit_buffer_get_data(tmp);
-                if(memcmp(message, request_sio, sizeof(request_sio)) == 0) {
-                    view_dispatcher_send_custom_event(
-                        seos->view_dispatcher, SeosCustomEventSIORequested);
-                    BitBuffer* sio_file = bit_buffer_alloc(128);
-                    bit_buffer_append_bytes(sio_file, message + 2, 2); // fileId
-                    bit_buffer_append_byte(sio_file, seos_emulator->credential->sio_len);
-                    bit_buffer_append_bytes(
-                        sio_file,
-                        seos_emulator->credential->sio,
-                        seos_emulator->credential->sio_len);
-
-                    secure_messaging_wrap_rapdu(
-                        seos_emulator->secure_messaging,
-                        (uint8_t*)bit_buffer_get_data(sio_file),
-                        bit_buffer_get_size_bytes(sio_file),
-                        tx_buffer);
-
-                    bit_buffer_free(sio_file);
-                }
-
-                bit_buffer_free(tmp);
-            } else {
-                uint8_t no_sm[] = {0x69, 0x88};
-                bit_buffer_append_bytes(tx_buffer, no_sm, sizeof(no_sm));
-            }
-        } else {
-            // I'm trying to find a good place to re-assert that we're emulating so we don't get stuck on a previous UI screen when we emulate repeatedly
-            view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventEmulate);
-        }
+        // if (flow_mode == FLOW_CRED) {
+        ret = seos_worker_listener_process_message(seos);
 
         if(bit_buffer_get_size_bytes(seos_emulator->tx_buffer) >
            offset) { // contents belong iso framing
