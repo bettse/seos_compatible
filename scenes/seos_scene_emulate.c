@@ -44,10 +44,6 @@ bool seos_scene_emulate_on_event(void* context, SceneManagerEvent event) {
             popup_set_header(popup, "SIO\nRequested", 68, 30, AlignLeft, AlignTop);
             consumed = true;
         }
-
-    } else if(event.type == SceneManagerEventTypeBack) {
-        scene_manager_search_and_switch_to_previous_scene(seos->scene_manager, SeosSceneSavedMenu);
-        consumed = true;
     }
 
     return consumed;
