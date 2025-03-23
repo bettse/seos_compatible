@@ -41,13 +41,13 @@ bool seos_scene_scanner_menu_on_event(void* context, SceneManagerEvent event) {
             scene_manager_set_scene_state(
                 seos->scene_manager, SeosSceneStart, SubmenuIndexBLEReaderScanner);
             seos->flow_mode = FLOW_READER_SCANNER;
-            scene_manager_next_scene(seos->scene_manager, SeosSceneBleDevice);
+            scene_manager_next_scene(seos->scene_manager, SeosSceneBleCentral);
             consumed = true;
         } else if(event.event == SubmenuIndexBLECredScanner) {
             scene_manager_set_scene_state(
                 seos->scene_manager, SeosSceneStart, SubmenuIndexBLECredScanner);
             seos->flow_mode = FLOW_CRED_SCANNER;
-            scene_manager_next_scene(seos->scene_manager, SeosSceneBleDevice);
+            scene_manager_next_scene(seos->scene_manager, SeosSceneBleCentral);
             consumed = true;
         }
     }

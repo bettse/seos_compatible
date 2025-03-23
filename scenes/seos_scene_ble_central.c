@@ -3,9 +3,9 @@
 #include "../seos_common.h"
 #include <dolphin/dolphin.h>
 
-#define TAG "SeosSceneBleDevice"
+#define TAG "SeosSceneBleCentral"
 
-void seos_scene_ble_device_on_enter(void* context) {
+void seos_scene_ble_central_on_enter(void* context) {
     Seos* seos = context;
     dolphin_deed(DolphinDeedNfcRead);
 
@@ -22,7 +22,7 @@ void seos_scene_ble_device_on_enter(void* context) {
     view_dispatcher_switch_to_view(seos->view_dispatcher, SeosViewPopup);
 }
 
-bool seos_scene_ble_device_on_event(void* context, SceneManagerEvent event) {
+bool seos_scene_ble_central_on_event(void* context, SceneManagerEvent event) {
     Seos* seos = context;
     Popup* popup = seos->popup;
     bool consumed = false;
@@ -68,7 +68,7 @@ bool seos_scene_ble_device_on_event(void* context, SceneManagerEvent event) {
     return consumed;
 }
 
-void seos_scene_ble_device_on_exit(void* context) {
+void seos_scene_ble_central_on_exit(void* context) {
     Seos* seos = context;
 
     if(seos->seos_central) {

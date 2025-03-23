@@ -62,7 +62,7 @@ bool seos_scene_saved_menu_on_event(void* context, SceneManagerEvent event) {
             scene_manager_set_scene_state(
                 seos->scene_manager, SeosSceneSavedMenu, SubmenuIndexBLEEmulateCentral);
             seos->flow_mode = FLOW_CRED;
-            scene_manager_next_scene(seos->scene_manager, SeosSceneBleDevice);
+            scene_manager_next_scene(seos->scene_manager, SeosSceneBleCentral);
             consumed = true;
         } else if(event.event == SubmenuIndexBLEEmulatePeripheral) {
             scene_manager_set_scene_state(

@@ -93,7 +93,7 @@ bool seos_scene_start_on_event(void* context, SceneManagerEvent event) {
             scene_manager_set_scene_state(
                 seos->scene_manager, SeosSceneStart, SubmenuIndexBLECredInterrogate);
             seos->flow_mode = FLOW_READER;
-            scene_manager_next_scene(seos->scene_manager, SeosSceneBleDevice);
+            scene_manager_next_scene(seos->scene_manager, SeosSceneBleCentral);
             consumed = true;
         } else if(event.event == SubmenuIndexSaved) {
             scene_manager_set_scene_state(seos->scene_manager, SeosSceneStart, SubmenuIndexSaved);
