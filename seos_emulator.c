@@ -649,8 +649,9 @@ NfcCommand seos_worker_listener_callback(NfcGenericEvent event, void* context) {
         // Some ISO14443a framing I need to figure out
         bit_buffer_append_bytes(tx_buffer, rx_data, offset);
 
-        // if (flow_mode == FLOW_CRED) {
-        ret = seos_worker_listener_process_message(seos);
+        if(seos->flow_mode == FLOW_CRED) {
+            ret = seos_worker_listener_process_message(seos);
+        }
 
         if(bit_buffer_get_size_bytes(seos_emulator->tx_buffer) >
            offset) { // contents belong iso framing
