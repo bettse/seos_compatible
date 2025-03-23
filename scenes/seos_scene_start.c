@@ -9,6 +9,7 @@ enum SubmenuIndex {
     SubmenuIndexScannerMenu,
     SubmenuIndexBLECredInterrogate,
     SubmenuIndexAbout,
+    SubmenuIndexInspect,
 };
 
 static SeosHci* seos_hci = NULL;
@@ -49,6 +50,9 @@ void seos_scene_start_on_update(void* context) {
             seos);
             */
     }
+    submenu_add_item(
+        submenu, "Inspect", SubmenuIndexInspect, seos_scene_start_submenu_callback, seos);
+
     submenu_add_item(submenu, "About", SubmenuIndexAbout, seos_scene_start_submenu_callback, seos);
 
     submenu_set_selected_item(
@@ -98,6 +102,12 @@ bool seos_scene_start_on_event(void* context, SceneManagerEvent event) {
         } else if(event.event == SubmenuIndexSaved) {
             scene_manager_set_scene_state(seos->scene_manager, SeosSceneStart, SubmenuIndexSaved);
             scene_manager_next_scene(seos->scene_manager, SeosSceneFileSelect);
+            consumed = true;
+        } else if(event.event == SubmenuIndexInspect) {
+            scene_manager_set_scene_state(
+                seos->scene_manager, SeosSceneStart, SubmenuIndexInspect);
+            seos->flow_mode = FLOW_INSPECT;
+            scene_manager_next_scene(seos->scene_manager, SeosSceneEmulate);
             consumed = true;
         } else if(event.event == SubmenuIndexAbout) {
             scene_manager_set_scene_state(seos->scene_manager, SeosSceneStart, SubmenuIndexAbout);

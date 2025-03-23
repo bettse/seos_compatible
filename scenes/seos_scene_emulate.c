@@ -13,7 +13,6 @@ void seos_scene_emulate_on_enter(void* context) {
     popup_set_icon(popup, 0, 3, &I_RFIDDolphinSend_97x61);
 
     nfc_device_load(seos->nfc_device, APP_ASSETS_PATH("seos.nfc"));
-    FURI_LOG_I(TAG, "file loaded");
 
     const Iso14443_4aData* data = nfc_device_get_data(seos->nfc_device, NfcProtocolIso14443_4a);
     seos->listener = nfc_listener_alloc(seos->nfc, NfcProtocolIso14443_4a, data);

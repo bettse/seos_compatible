@@ -39,6 +39,7 @@ typedef enum {
     FLOW_CRED,
     FLOW_READER_SCANNER,
     FLOW_CRED_SCANNER,
+    FLOW_INSPECT,
 } FlowMode;
 
 typedef enum {

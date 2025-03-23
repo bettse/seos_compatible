@@ -483,6 +483,36 @@ void seos_emulator_select_adf(
     seos_log_bitbuffer(TAG, "Select ADF (0xcd02...)", tx_buffer);
 }
 
+NfcCommand seos_worker_listener_inspect_reader(Seos* seos) {
+    SeosEmulator* seos_emulator = seos->seos_emulator;
+    BitBuffer* tx_buffer = seos_emulator->tx_buffer;
+    NfcCommand ret = NfcCommandContinue;
+
+    const uint8_t* rx_data = bit_buffer_get_data(seos_emulator->rx_buffer);
+    bool NAD = (rx_data[0] & NAD_MASK) == NAD_MASK;
+    uint8_t offset = NAD ? 2 : 1;
+
+    // + x to skip stuff before APDU
+    const uint8_t* apdu = rx_data + offset;
+
+    if(memcmp(apdu, select_header, sizeof(select_header)) == 0) {
+        if(memcmp(
+               apdu + sizeof(select_header) + 1, OPERATION_SELECTOR, sizeof(OPERATION_SELECTOR)) ==
+           0) {
+            uint8_t enableInspection[] = {
+                0x6f, 0x08, 0x85, 0x06, 0x02, 0x01, 0x40, 0x02, 0x01, 0x00};
+
+            bit_buffer_append_bytes(tx_buffer, enableInspection, sizeof(enableInspection));
+            view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventAIDSelected);
+        }
+    } else if(bit_buffer_get_size_bytes(seos_emulator->rx_buffer) > offset) {
+        FURI_LOG_I(TAG, "NFC stop");
+        ret = NfcCommandStop;
+    }
+
+    return ret;
+}
+
 NfcCommand seos_worker_listener_process_message(Seos* seos) {
     SeosEmulator* seos_emulator = seos->seos_emulator;
     BitBuffer* tx_buffer = seos_emulator->tx_buffer;
@@ -651,6 +681,8 @@ NfcCommand seos_worker_listener_callback(NfcGenericEvent event, void* context) {
 
         if(seos->flow_mode == FLOW_CRED) {
             ret = seos_worker_listener_process_message(seos);
+        } else if(seos->flow_mode == FLOW_INSPECT) {
+            ret = seos_worker_listener_inspect_reader(seos);
         }
 
         if(bit_buffer_get_size_bytes(seos_emulator->tx_buffer) >
@@ -693,5 +725,8 @@ NfcCommand seos_worker_listener_callback(NfcGenericEvent event, void* context) {
         break;
     }
 
+    if(ret == NfcCommandStop) {
+        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventReaderError);
+    }
     return ret;
 }
