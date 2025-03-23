@@ -522,6 +522,7 @@ NfcCommand seos_worker_listener_callback(NfcGenericEvent event, void* context) {
                 view_dispatcher_send_custom_event(
                     seos->view_dispatcher, SeosCustomEventAIDSelected);
             } else {
+                seos_log_bitbuffer(TAG, "Reject select", seos_emulator->rx_buffer);
                 bit_buffer_append_bytes(
                     seos_emulator->tx_buffer, (uint8_t*)FILE_NOT_FOUND, sizeof(FILE_NOT_FOUND));
             }
