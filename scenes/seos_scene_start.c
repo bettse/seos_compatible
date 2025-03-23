@@ -47,9 +47,10 @@ void seos_scene_start_on_enter(void* context) {
             seos);
             */
     }
+    /*
     submenu_add_item(
         submenu, "Inspect", SubmenuIndexInspect, seos_scene_start_submenu_callback, seos);
-
+    */
     submenu_add_item(submenu, "About", SubmenuIndexAbout, seos_scene_start_submenu_callback, seos);
 
     submenu_set_selected_item(
