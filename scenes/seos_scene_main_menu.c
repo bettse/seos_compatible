@@ -105,6 +105,9 @@ bool seos_scene_main_menu_on_event(void* context, SceneManagerEvent event) {
             scene_manager_next_scene(seos->scene_manager, SeosSceneAbout);
             consumed = true;
         }
+    } else if(event.type == SceneManagerEventTypeBack) {
+        consumed = scene_manager_previous_scene(seos->scene_manager);
+        consumed = scene_manager_previous_scene(seos->scene_manager);
     }
 
     return consumed;

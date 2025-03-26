@@ -128,7 +128,7 @@ Seos* seos_alloc() {
 
     seos->seos_emulator = seos_emulator_alloc(&seos->credential);
 
-    seos_load_keys(seos);
+    seos->keys_loaded = seos_load_keys(seos);
 
     return seos;
 }
@@ -291,7 +291,11 @@ int32_t seos_app(void* p) {
     UNUSED(p);
     Seos* seos = seos_alloc();
 
-    scene_manager_next_scene(seos->scene_manager, SeosSceneMainMenu);
+    if(seos->keys_loaded) {
+        scene_manager_next_scene(seos->scene_manager, SeosSceneMainMenu);
+    } else {
+        scene_manager_next_scene(seos->scene_manager, SeosSceneZeroKeys);
+    }
 
     view_dispatcher_run(seos->view_dispatcher);
 

@@ -101,6 +101,8 @@ struct Seos {
     char dev_name[SEOS_FILE_NAME_MAX_LENGTH + 1];
     FuriString* load_path;
     DialogsApp* dialogs;
+
+    bool keys_loaded;
 };
 
 typedef enum {
