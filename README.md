@@ -4,6 +4,14 @@ Flipper app for reading and emulating Seos-compatible cards/fobs/mobile credenti
 
 ![Demo Video](demo.mp4)
 
+## Note
+
+This software incorporates a third-party implementation of Seos™ technology. It is not developed, authorized, licensed, or endorsed by HID Global, ASSA ABLOY, or any of their affiliates. References to Seos™ are solely for descriptive and compatibility purposes.
+
+No guarantee of compatibility or functionality is made. This implementation may not work with all Seos™-enabled systems, and its performance, security, and reliability are not assured. Users assume all risks associated with its use.
+
+Seos™, HID Global, and ASSA ABLOY are trademarks or registered trademarks of their respective owners. This software is not associated with or sponsored by them in any way.
+
 ## To do:
 
 - Fix iso14443a-4 framing
@@ -49,10 +57,4 @@ The app uses all 00 keys by default. If you'd like to use your own keys, use the
 | gnd             | 11  | black  | any ground      | GND                 |
 | power           | 5v  | red    | VIN 3-5v        | VBUS                |
 
-## Note
 
-This software incorporates a third-party implementation of Seos™ technology. It is not developed, authorized, licensed, or endorsed by HID Global, ASSA ABLOY, or any of their affiliates. References to Seos™ are solely for descriptive and compatibility purposes.
-
-No guarantee of compatibility or functionality is made. This implementation may not work with all Seos™-enabled systems, and its performance, security, and reliability are not assured. Users assume all risks associated with its use.
-
-Seos™, HID Global, and ASSA ABLOY are trademarks or registered trademarks of their respective owners. This software is not associated with or sponsored by them in any way.
