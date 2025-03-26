@@ -37,7 +37,7 @@ bool seos_scene_delete_on_event(void* context, SceneManagerEvent event) {
                 scene_manager_next_scene(seos->scene_manager, SeosSceneDeleteSuccess);
             } else {
                 scene_manager_search_and_switch_to_previous_scene(
-                    seos->scene_manager, SeosSceneStart);
+                    seos->scene_manager, SeosSceneMainMenu);
             }
             consumed = true;
         }

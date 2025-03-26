@@ -1,4 +1,4 @@
-ADD_SCENE(seos, start, Start)
+ADD_SCENE(seos, main_menu, MainMenu)
 ADD_SCENE(seos, emulate, Emulate)
 ADD_SCENE(seos, read, Read)
 ADD_SCENE(seos, file_select, FileSelect)

@@ -291,7 +291,7 @@ int32_t seos_app(void* p) {
     UNUSED(p);
     Seos* seos = seos_alloc();
 
-    scene_manager_next_scene(seos->scene_manager, SeosSceneStart);
+    scene_manager_next_scene(seos->scene_manager, SeosSceneMainMenu);
 
     view_dispatcher_run(seos->view_dispatcher);
 

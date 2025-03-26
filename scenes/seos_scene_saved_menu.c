@@ -83,7 +83,7 @@ bool seos_scene_saved_menu_on_event(void* context, SceneManagerEvent event) {
         }
     } else if(event.type == SceneManagerEventTypeBack) {
         memset((void*)&seos->credential, 0, sizeof(seos->credential));
-        scene_manager_search_and_switch_to_previous_scene(seos->scene_manager, SeosSceneStart);
+        scene_manager_search_and_switch_to_previous_scene(seos->scene_manager, SeosSceneMainMenu);
         consumed = true;
     }
 

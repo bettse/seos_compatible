@@ -50,7 +50,7 @@ bool seos_scene_read_error_on_event(void* context, SceneManagerEvent event) {
             consumed = scene_manager_previous_scene(seos->scene_manager);
         }
     } else if(event.type == SceneManagerEventTypeBack) {
-        scene_manager_search_and_switch_to_previous_scene(seos->scene_manager, SeosSceneStart);
+        scene_manager_search_and_switch_to_previous_scene(seos->scene_manager, SeosSceneMainMenu);
         consumed = true;
     }
     return consumed;

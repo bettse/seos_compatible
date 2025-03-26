@@ -28,7 +28,7 @@ bool seos_scene_save_success_on_event(void* context, SceneManagerEvent event) {
     if(event.type == SceneManagerEventTypeCustom) {
         if(event.event == SeosCustomEventViewExit) {
             consumed = scene_manager_search_and_switch_to_previous_scene(
-                seos->scene_manager, SeosSceneStart);
+                seos->scene_manager, SeosSceneMainMenu);
         }
     }
     return consumed;
