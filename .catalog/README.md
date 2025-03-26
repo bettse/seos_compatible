@@ -1,12 +1,6 @@
-
 ## Keys
 
-The app uses all 00 keys by default. If you'd like to use your own keys, use the format of the `keys-example.txt` to specify them, and place into `SD Card/apps_data/seos/keys.txt`
-
-
-## BLE Support
-
-Supports nRF52840 dongle and nRF72840DK (dev kit) using `hci_uart_3wire` example from Nordic SDK.  See [README](https://gitlab.com/bettse/flipper_seos/-/blob/main/README.md?ref_type=heads#hardware-for-ble-support) for wiring details.
+**The app uses all zero keys by default**. If you'd like to use your own keys, use the format of the `keys-example.txt` to specify them, and place into `SD Card/apps_data/seos/keys.txt`
 
 ## Note
 
