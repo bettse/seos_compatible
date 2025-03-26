@@ -22,7 +22,8 @@ void seos_scene_main_menu_on_enter(void* context) {
     Submenu* submenu = seos->submenu;
     submenu_reset(submenu);
 
-    submenu_add_item(submenu, "Saved", SubmenuIndexSaved, seos_scene_main_menu_submenu_callback, seos);
+    submenu_add_item(
+        submenu, "Saved", SubmenuIndexSaved, seos_scene_main_menu_submenu_callback, seos);
     submenu_add_item(
         submenu, "Read NFC", SubmenuIndexRead, seos_scene_main_menu_submenu_callback, seos);
     if(seos->has_ble) {
@@ -51,7 +52,8 @@ void seos_scene_main_menu_on_enter(void* context) {
     submenu_add_item(
         submenu, "Inspect", SubmenuIndexInspect, seos_scene_main_menu_submenu_callback, seos);
     */
-    submenu_add_item(submenu, "About", SubmenuIndexAbout, seos_scene_main_menu_submenu_callback, seos);
+    submenu_add_item(
+        submenu, "About", SubmenuIndexAbout, seos_scene_main_menu_submenu_callback, seos);
 
     submenu_set_selected_item(
         seos->submenu, scene_manager_get_scene_state(seos->scene_manager, SeosSceneMainMenu));
@@ -65,7 +67,8 @@ bool seos_scene_main_menu_on_event(void* context, SceneManagerEvent event) {
 
     if(event.type == SceneManagerEventTypeCustom) {
         if(event.event == SubmenuIndexRead) {
-            scene_manager_set_scene_state(seos->scene_manager, SeosSceneMainMenu, SubmenuIndexRead);
+            scene_manager_set_scene_state(
+                seos->scene_manager, SeosSceneMainMenu, SubmenuIndexRead);
             scene_manager_next_scene(seos->scene_manager, SeosSceneRead);
             consumed = true;
         } else if(event.event == SubmenuIndexBLEReader) {
@@ -86,7 +89,8 @@ bool seos_scene_main_menu_on_event(void* context, SceneManagerEvent event) {
             scene_manager_next_scene(seos->scene_manager, SeosSceneBleCentral);
             consumed = true;
         } else if(event.event == SubmenuIndexSaved) {
-            scene_manager_set_scene_state(seos->scene_manager, SeosSceneMainMenu, SubmenuIndexSaved);
+            scene_manager_set_scene_state(
+                seos->scene_manager, SeosSceneMainMenu, SubmenuIndexSaved);
             scene_manager_next_scene(seos->scene_manager, SeosSceneFileSelect);
             consumed = true;
         } else if(event.event == SubmenuIndexInspect) {
@@ -96,7 +100,8 @@ bool seos_scene_main_menu_on_event(void* context, SceneManagerEvent event) {
             scene_manager_next_scene(seos->scene_manager, SeosSceneEmulate);
             consumed = true;
         } else if(event.event == SubmenuIndexAbout) {
-            scene_manager_set_scene_state(seos->scene_manager, SeosSceneMainMenu, SubmenuIndexAbout);
+            scene_manager_set_scene_state(
+                seos->scene_manager, SeosSceneMainMenu, SubmenuIndexAbout);
             scene_manager_next_scene(seos->scene_manager, SeosSceneAbout);
             consumed = true;
         }
