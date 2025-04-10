@@ -49,7 +49,7 @@ static GapConfig seos_reader_template_config = {
         {
             0x2e,
             0x01,
-            0x13,
+            0x15,
             0x4b,
             0xe2,
             0xb6,
