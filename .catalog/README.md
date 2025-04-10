@@ -1,6 +1,6 @@
 ## Keys
 
-**The app uses all zero keys by default**. If you'd like to use your own keys, use the format of the `keys-example.txt` to specify them, and place into `SD Card/apps_data/seos/keys.txt`
+**The app uses all zero keys by default**. If you'd like to use your own keys, use the format of the 'keys-example.txt' to specify them, and place into 'SD Card/apps_data/seos/keys.txt'
 
 ## Note
 
