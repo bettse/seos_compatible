@@ -2,7 +2,9 @@
 
 #define TAG "SeosEmulator"
 
-#define NAD_MASK 0x08
+#define NAD_MASK             0x08
+#define SEADER_PATH          "/ext/apps_data/seader"
+#define SEADER_APP_EXTENSION ".credential"
 
 static uint8_t select_header[] = {0x00, 0xa4, 0x04, 0x00};
 static uint8_t standard_seos_aid[] = {0xa0, 0x00, 0x00, 0x04, 0x40, 0x00, 0x01, 0x01, 0x00, 0x01};
@@ -169,7 +171,125 @@ static bool
     return parsed;
 }
 
-bool seos_emulator_file_select(SeosEmulator* seos_emulator) {
+static bool seos_emulator_file_load_seader(
+    SeosEmulator* seos_emulator,
+    FuriString* path,
+    bool show_dialog) {
+    bool parsed = false;
+    FlipperFormat* file = flipper_format_file_alloc(seos_emulator->storage);
+    FuriString* reason = furi_string_alloc_set("Couldn't load file");
+    FuriString* temp_str;
+    temp_str = furi_string_alloc();
+    const char* seader_file_header = "Flipper Seader Credential";
+    const uint32_t seader_file_version = 1;
+
+    if(seos_emulator->loading_cb) {
+        seos_emulator->loading_cb(seos_emulator->loading_cb_ctx, true);
+    }
+
+    memset(
+        seos_emulator->credential->diversifier, 0, sizeof(seos_emulator->credential->diversifier));
+    memset(seos_emulator->credential->sio, 0, sizeof(seos_emulator->credential->sio));
+    do {
+        if(!flipper_format_file_open_existing(file, furi_string_get_cstr(path))) break;
+
+        // Read and verify file header
+        uint32_t version = 0;
+        if(!flipper_format_read_header(file, temp_str, &version)) break;
+        if(furi_string_cmp_str(temp_str, seader_file_header) || (version != seader_file_version)) {
+            furi_string_printf(reason, "Deprecated file format");
+            break;
+        }
+        // Don't forget, order of keys is important
+
+        if(!flipper_format_key_exist(file, "SIO")) {
+            furi_string_printf(reason, "Missing SIO");
+            break;
+        }
+        seos_emulator->credential->sio_len = 64; // Seader SIO size
+        // We can't check the return status because it will be false if less than the requested length of bytes was read.
+        flipper_format_read_hex(
+            file, "SIO", seos_emulator->credential->sio, seos_emulator->credential->sio_len);
+        seos_emulator->credential->sio_len = seos_emulator->credential->sio[1] +
+                                             4; // 2 for type and length, 2 for null after SIO data
+
+        // -------------
+        if(!flipper_format_key_exist(file, "Diversifier")) {
+            furi_string_printf(reason, "Missing Diversifier");
+            break;
+        }
+        seos_emulator->credential->diversifier_len = 8; //Seader diversifier size
+        flipper_format_read_hex(
+            file,
+            "Diversifier",
+            seos_emulator->credential->diversifier,
+            seos_emulator->credential->diversifier_len);
+        uint8_t* end = memchr(seos_emulator->credential->diversifier, 0, 8);
+        if(end) {
+            seos_emulator->credential->diversifier_len =
+                end - seos_emulator->credential->diversifier;
+        } // Returns NULL if char cannot be found
+
+        SeosCredential* cred = seos_emulator->credential;
+        char display[128 * 2 + 1];
+
+        memset(display, 0, sizeof(display));
+        for(uint8_t i = 0; i < cred->sio_len; i++) {
+            snprintf(display + (i * 2), sizeof(display), "%02x", cred->sio[i]);
+        }
+        FURI_LOG_D(TAG, "SIO: %s", display);
+
+        memset(display, 0, sizeof(display));
+        for(uint8_t i = 0; i < cred->diversifier_len; i++) {
+            snprintf(display + (i * 2), sizeof(display), "%02x", cred->diversifier[i]);
+        }
+        FURI_LOG_D(TAG, "Diversifier: %s", display);
+
+        parsed = true;
+    } while(false);
+
+    if(seos_emulator->loading_cb) {
+        seos_emulator->loading_cb(seos_emulator->loading_cb_ctx, false);
+    }
+
+    if((!parsed) && (show_dialog)) {
+        dialog_message_show_storage_error(seos_emulator->dialogs, furi_string_get_cstr(reason));
+    }
+
+    furi_string_free(reason);
+    furi_string_free(temp_str);
+    flipper_format_free(file);
+
+    return parsed;
+}
+
+bool seos_emulator_file_select_seader(SeosEmulator* seos_emulator) {
+    furi_assert(seos_emulator);
+    bool res = false;
+
+    FuriString* app_folder = furi_string_alloc_set(SEADER_PATH);
+
+    DialogsFileBrowserOptions browser_options;
+    dialog_file_browser_set_basic_options(&browser_options, SEADER_APP_EXTENSION, &I_Nfc_10px);
+    browser_options.base_path = SEADER_PATH;
+
+    res = dialog_file_browser_show(
+        seos_emulator->dialogs, seos_emulator->load_path, app_folder, &browser_options);
+
+    furi_string_free(app_folder);
+    if(res) {
+        FuriString* filename;
+        filename = furi_string_alloc();
+        path_extract_filename(seos_emulator->load_path, filename, true);
+        strncpy(seos_emulator->name, furi_string_get_cstr(filename), SEOS_FILE_NAME_MAX_LENGTH);
+        res = seos_emulator_file_load_seader(seos_emulator, seos_emulator->load_path, true);
+        furi_string_free(filename);
+    }
+
+    return res;
+}
+
+bool seos_emulator_file_select_seos(SeosEmulator* seos_emulator) {
     furi_assert(seos_emulator);
     bool res = false;
 
@@ -193,6 +313,15 @@ bool seos_emulator_file_select(SeosEmulator* seos_emulator) {
     }
 
     return res;
+}
+
+bool seos_emulator_file_select(SeosEmulator* seos_emulator) {
+    if(seos_emulator->load_type == SeosLoadSeos) {
+        return seos_emulator_file_select_seos(seos_emulator);
+    } else if(seos_emulator->load_type == SeosLoadSeader) {
+        return seos_emulator_file_select_seader(seos_emulator);
+    }
+    return false;
 }
 
 bool seos_emulator_delete(SeosEmulator* seos_emulator, bool use_load_path) {

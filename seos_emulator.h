@@ -30,6 +30,10 @@ typedef struct {
     void* loading_cb_ctx;
     Storage* storage;
     DialogsApp* dialogs;
+    enum {
+        SeosLoadSeos,
+        SeosLoadSeader
+    } load_type;
 } SeosEmulator;
 
 NfcCommand seos_worker_listener_callback(NfcGenericEvent event, void* context);
