@@ -35,10 +35,7 @@ bool seos_load_keys(Seos* seos) {
 
     if(parsed) {
         FURI_LOG_I(TAG, "Keys loaded");
-        BitBuffer* tmp = bit_buffer_alloc(SEOS_ADF_OID_LEN);
-        bit_buffer_append_bytes(tmp, SEOS_ADF_OID, SEOS_ADF_OID_LEN);
-        seos_log_bitbuffer(TAG, "Keys for ADF OID loaded", tmp);
-        bit_buffer_free(tmp);
+        seos_log_buffer(TAG, "Keys for ADF OID loaded", SEOS_ADF_OID, SEOS_ADF_OID_LEN);
     } else {
         FURI_LOG_I(TAG, "Using default keys");
     }
