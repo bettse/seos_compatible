@@ -8,7 +8,6 @@ static uint8_t select[] =
 static uint8_t SEOS_APPLET_FCI[] =
     {0x6F, 0x0C, 0x84, 0x0A, 0xA0, 0x00, 0x00, 0x04, 0x40, 0x00, 0x01, 0x01, 0x00, 0x01};
 
-static uint8_t select_adf_header[] = {0x80, 0xa5, 0x04, 0x00};
 static uint8_t general_authenticate_1[] =
     {0x00, 0x87, 0x00, 0x01, 0x04, 0x7c, 0x02, 0x81, 0x00, 0x00};
 
@@ -183,6 +182,7 @@ NfcCommand seos_reader_select_aid(SeosReader* seos_reader) {
     Iso14443_4aError error;
 
     bit_buffer_append_bytes(tx_buffer, select, sizeof(select));
+    seos_log_bitbuffer(TAG, "NFC transmit", tx_buffer);
     error = iso14443_4a_poller_send_block(iso14443_4a_poller, tx_buffer, rx_buffer);
     if(error != Iso14443_4aErrorNone) {
         FURI_LOG_W(TAG, "iso14443_4a_poller_send_block error %d", error);
@@ -218,15 +218,20 @@ NfcCommand seos_reader_select_adf(SeosReader* seos_reader) {
     NfcCommand ret = NfcCommandContinue;
     Iso14443_4aError error;
 
+    uint8_t select_adf_header[] = {
+        0x80, 0xa5, 0x04, 0x00, (uint8_t)SEOS_ADF_OID_LEN + 2, 0x06, (uint8_t)SEOS_ADF_OID_LEN};
+
     bit_buffer_append_bytes(tx_buffer, select_adf_header, sizeof(select_adf_header));
-    bit_buffer_append_byte(tx_buffer, SEOS_ADF_OID_LEN);
     bit_buffer_append_bytes(tx_buffer, SEOS_ADF_OID, SEOS_ADF_OID_LEN);
     bit_buffer_append_byte(tx_buffer, 0x00); // Le
+
+    seos_log_bitbuffer(TAG, "NFC transmit", tx_buffer);
     error = iso14443_4a_poller_send_block(iso14443_4a_poller, tx_buffer, rx_buffer);
     if(error != Iso14443_4aErrorNone) {
         FURI_LOG_W(TAG, "iso14443_4a_poller_send_block error %d", error);
         return NfcCommandStop;
     }
+    seos_log_bitbuffer(TAG, "NFC response", rx_buffer);
     bit_buffer_reset(tx_buffer);
     return ret;
 }
