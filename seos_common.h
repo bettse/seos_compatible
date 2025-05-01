@@ -57,6 +57,8 @@ typedef struct {
     size_t sio_len;
     uint8_t priv_key[16];
     uint8_t auth_key[16];
+    size_t adf_oid_len;
+    uint8_t adf_oid[32];
     uint8_t adf_response[72];
 } SeosCredential;
 

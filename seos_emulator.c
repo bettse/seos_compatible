@@ -32,9 +32,14 @@ SeosEmulator* seos_emulator_alloc(SeosCredential* credential) {
     SeosEmulator* seos_emulator = malloc(sizeof(SeosEmulator));
     memset(seos_emulator, 0, sizeof(SeosEmulator));
 
-    // Using DES for greater compatibilty
-    seos_emulator->params.cipher = TWO_KEY_3DES_CBC_MODE;
-    seos_emulator->params.hash = SHA1;
+    if(credential->adf_response[0] == 0) {
+        // Using DES for greater compatibilty
+        seos_emulator->params.cipher = TWO_KEY_3DES_CBC_MODE;
+        seos_emulator->params.hash = SHA1;
+    } else {
+        seos_emulator->params.cipher = credential->adf_response[2];
+        seos_emulator->params.hash = credential->adf_response[3];
+    }
 
     memset(seos_emulator->params.rndICC, 0x0d, sizeof(seos_emulator->params.rndICC));
     memset(seos_emulator->params.rNonce, 0x0c, sizeof(seos_emulator->params.rNonce));
@@ -150,6 +155,15 @@ static bool
             "ADF Response",
             seos_emulator->credential->adf_response,
             sizeof(seos_emulator->credential->adf_response));
+
+        flipper_format_read_uint32(
+            file, "ADF OID Length", (uint32_t*)&(seos_emulator->credential->adf_oid_len), 1);
+        flipper_format_read_hex(
+            file,
+            "ADF OID",
+            seos_emulator->credential->adf_oid,
+            seos_emulator->credential->adf_oid_len);
+
         parsed = true;
     } while(false);
 

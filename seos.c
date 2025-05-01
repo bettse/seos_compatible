@@ -123,6 +123,9 @@ Seos* seos_alloc() {
     seos->dialogs = furi_record_open(RECORD_DIALOGS);
     seos->load_path = furi_string_alloc();
 
+    seos->credential.diversifier_len = 0;
+    seos->credential.sio_len = 0;
+    seos->credential.adf_oid_len = 0;
     seos->seos_emulator = seos_emulator_alloc(&seos->credential);
 
     seos->keys_loaded = seos_load_keys(seos);
@@ -239,6 +242,25 @@ bool seos_credential_save(Seos* seos, const char* dev_name) {
             break;
         if(!flipper_format_write_hex(file, "SIO", seos->credential.sio, seos->credential.sio_len))
             break;
+        if(!flipper_format_write_hex(
+               file, "Priv Key", seos->credential.priv_key, sizeof(seos->credential.priv_key)))
+            break;
+        if(!flipper_format_write_hex(
+               file, "Auth Key", seos->credential.auth_key, sizeof(seos->credential.auth_key)))
+            break;
+        if(seos->credential.adf_response[0] != 0) {
+            flipper_format_write_hex(
+                file,
+                "ADF Response",
+                seos->credential.adf_response,
+                sizeof(seos->credential.adf_response));
+        }
+        if(seos->credential.adf_oid_len > 0) {
+            flipper_format_write_uint32(
+                file, "ADF OID Length", (uint32_t*)&(seos->credential.adf_oid_len), 1);
+            flipper_format_write_hex(
+                file, "ADF OID", seos->credential.adf_oid, seos->credential.adf_oid_len);
+        }
 
         saved = true;
     } while(false);

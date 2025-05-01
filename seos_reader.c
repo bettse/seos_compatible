@@ -260,6 +260,11 @@ bool seos_reader_select_adf_response(
     }
     params->cipher = rx_data[2];
     params->hash = rx_data[3];
+    memset(credential->adf_response, 0, sizeof(credential->adf_response));
+    memcpy(
+        credential->adf_response,
+        rx_data,
+        bit_buffer_get_size_bytes(rx_buffer) - offset - sizeof(success));
 
     size_t bufLen = 0;
     uint8_t clear[0x40];
@@ -425,6 +430,9 @@ NfcCommand seos_state_machine(Seos* seos, Iso14443_4aPoller* iso14443_4a_poller)
         if(ret == NfcCommandStop) break;
 
         if(seos_reader_request_sio(seos_reader)) {
+            SeosCredential* credential = seos_reader->credential;
+            credential->adf_oid_len = SEOS_ADF_OID_LEN;
+            memcpy(credential->adf_oid, SEOS_ADF_OID, sizeof(credential->adf_oid));
             view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventReaderSuccess);
         }
 
