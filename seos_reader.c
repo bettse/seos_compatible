@@ -431,6 +431,9 @@ NfcCommand seos_state_machine(Seos* seos, Iso14443_4aPoller* iso14443_4a_poller)
 
         if(seos_reader_request_sio(seos_reader)) {
             SeosCredential* credential = seos_reader->credential;
+            AuthParameters* params = &seos_reader->params;
+            memcpy(credential->priv_key, params->priv_key, sizeof(credential->priv_key));
+            memcpy(credential->auth_key, params->auth_key, sizeof(credential->auth_key));
             credential->adf_oid_len = SEOS_ADF_OID_LEN;
             memcpy(credential->adf_oid, SEOS_ADF_OID, sizeof(credential->adf_oid));
             view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventReaderSuccess);
