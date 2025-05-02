@@ -403,18 +403,35 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
                 seos_emulator->tx_buffer, (uint8_t*)FILE_NOT_FOUND, sizeof(FILE_NOT_FOUND));
         }
     } else if(memcmp(apdu, select_adf_header, sizeof(select_adf_header)) == 0) {
-        // is our adf in the list?
+        void* p = NULL;
         // +1 to skip APDU length byte
-        void* p = memmem(
-            apdu + sizeof(select_adf_header) + 1,
-            apdu[sizeof(select_adf_header)],
-            SEOS_ADF_OID,
-            SEOS_ADF_OID_LEN);
+        const uint8_t* oid_list = apdu + sizeof(select_adf_header) + 1;
+        // First we try to match the credential ADF OID
+        SeosCredential* credential = seos_emulator->credential;
+        if(credential->adf_oid_len > 0) {
+            p = memmem(
+                oid_list,
+                apdu[sizeof(select_adf_header)],
+                credential->adf_oid,
+                credential->adf_oid_len);
+            if(p) {
+                seos_log_buffer(TAG, "Select ADF OID(credential)", p, SEOS_ADF_OID_LEN);
+
+                view_dispatcher_send_custom_event(
+                    seos->view_dispatcher, SeosCustomEventADFMatched);
+
+                bit_buffer_append_bytes(
+                    seos_emulator->tx_buffer,
+                    credential->adf_response,
+                    sizeof(credential->adf_response));
+                return ret;
+            }
+        }
+        // Next we try to match the ADF OID from the keys file
+        p = memmem(oid_list, apdu[sizeof(select_adf_header)], SEOS_ADF_OID, SEOS_ADF_OID_LEN);
         if(p) {
-            BitBuffer* tmp = bit_buffer_alloc(SEOS_ADF_OID_LEN);
-            bit_buffer_append_bytes(tmp, p, SEOS_ADF_OID_LEN);
-            seos_log_bitbuffer(TAG, "Matched ADF", tmp);
-            bit_buffer_free(tmp);
+            seos_log_buffer(TAG, "Select ADF OID(keys)", p, SEOS_ADF_OID_LEN);
+
             view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventADFMatched);
 
             seos_emulator_select_adf(
