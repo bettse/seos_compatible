@@ -402,14 +402,11 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
         void* p = NULL;
         // +1 to skip APDU length byte
         const uint8_t* oid_list = apdu + sizeof(select_adf_header) + 1;
+        size_t oid_list_len = apdu[sizeof(select_adf_header)];
         // First we try to match the credential ADF OID
         SeosCredential* credential = seos_emulator->credential;
         if(credential->adf_oid_len > 0) {
-            p = memmem(
-                oid_list,
-                apdu[sizeof(select_adf_header)],
-                credential->adf_oid,
-                credential->adf_oid_len);
+            p = memmem(oid_list, oid_list_len, credential->adf_oid, credential->adf_oid_len);
             if(p) {
                 seos_log_buffer(TAG, "Select ADF OID(credential)", p, credential->adf_oid_len);
 
@@ -423,7 +420,7 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
             }
         }
         // Next we try to match the ADF OID from the keys file
-        p = memmem(oid_list, apdu[sizeof(select_adf_header)], SEOS_ADF_OID, SEOS_ADF_OID_LEN);
+        p = memmem(oid_list, oid_list_len, SEOS_ADF_OID, SEOS_ADF_OID_LEN);
         if(p) {
             seos_log_buffer(TAG, "Select ADF OID(keys)", p, SEOS_ADF_OID_LEN);
 
