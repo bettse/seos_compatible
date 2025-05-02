@@ -379,7 +379,10 @@ void seos_native_peripheral_process_message_reader(
         view_dispatcher_send_custom_event(
             seos_native_peripheral->seos->view_dispatcher, SeosCustomEventSIORequested);
     } else if(seos_native_peripheral->phase == REQUEST_SIO) {
+        // TODO: consider seos_reader_request_sio
         SecureMessaging* secure_messaging = seos_native_peripheral->secure_messaging;
+        SeosCredential* credential = seos_native_peripheral->credential;
+        AuthParameters* params = &seos_native_peripheral->params;
 
         BitBuffer* rx_buffer = bit_buffer_alloc(message.len - 1);
         bit_buffer_append_bytes(rx_buffer, rx_data, message.len - 1);
@@ -388,18 +391,19 @@ void seos_native_peripheral_process_message_reader(
         seos_log_bitbuffer(TAG, "BLE response(clear)", rx_buffer);
 
         // Skip fileId
-        seos_native_peripheral->credential->sio_len = bit_buffer_get_byte(rx_buffer, 2);
-        if(seos_native_peripheral->credential->sio_len >
-           sizeof(seos_native_peripheral->credential->sio)) {
+        credential->sio_len = bit_buffer_get_byte(rx_buffer, 2);
+        if(credential->sio_len > sizeof(credential->sio)) {
             FURI_LOG_W(TAG, "SIO too long to save");
             bit_buffer_free(response);
             return;
         }
-        memcpy(
-            seos_native_peripheral->credential->sio,
-            bit_buffer_get_data(rx_buffer) + 3,
-            seos_native_peripheral->credential->sio_len);
-        FURI_LOG_I(TAG, "SIO Captured, %d bytes", seos_native_peripheral->credential->sio_len);
+        memcpy(credential->sio, bit_buffer_get_data(rx_buffer) + 3, credential->sio_len);
+        memcpy(credential->priv_key, params->priv_key, sizeof(credential->priv_key));
+        memcpy(credential->auth_key, params->auth_key, sizeof(credential->auth_key));
+        credential->adf_oid_len = SEOS_ADF_OID_LEN;
+        memcpy(credential->adf_oid, SEOS_ADF_OID, sizeof(credential->adf_oid));
+
+        FURI_LOG_I(TAG, "SIO Captured, %d bytes", credential->sio_len);
 
         Seos* seos = seos_native_peripheral->seos;
         view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventReaderSuccess);
