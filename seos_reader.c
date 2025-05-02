@@ -260,14 +260,10 @@ bool seos_reader_select_adf_response(
     }
     params->cipher = rx_data[2];
     params->hash = rx_data[3];
-    memset(credential->adf_response, 0, sizeof(credential->adf_response));
-    memcpy(
-        credential->adf_response,
-        rx_data,
-        bit_buffer_get_size_bytes(rx_buffer) - offset - sizeof(success));
 
     size_t bufLen = 0;
     uint8_t clear[0x40];
+    memset(clear, 0, sizeof(clear));
 
     if(params->cipher == AES_128_CBC) {
         size_t ivLen = 16;
@@ -291,6 +287,7 @@ bool seos_reader_select_adf_response(
         mbedtls_des3_crypt_cbc(&ctx, MBEDTLS_DES_DECRYPT, bufLen, iv, enc, clear);
         mbedtls_des3_free(&ctx);
     }
+    seos_log_buffer(TAG, "clear", clear, sizeof(clear));
 
     // 06112b0601040181e438010102011801010202 cf 07 3d4c010c71cfa7 e2d0b41a00cc5e494c8d52b6e562592399fe614a
     if(clear[0] != 0x06) {
@@ -307,6 +304,12 @@ bool seos_reader_select_adf_response(
         FURI_LOG_W(TAG, "diversifier too large");
         return false;
     }
+
+    memset(credential->adf_response, 0, sizeof(credential->adf_response));
+    memcpy(
+        credential->adf_response,
+        rx_data,
+        bit_buffer_get_size_bytes(rx_buffer) - offset - sizeof(success));
 
     uint8_t* diversifier = clear + 2 + oidLen + 2;
     memcpy(credential->diversifier, diversifier, credential->diversifier_len);
@@ -408,7 +411,7 @@ NfcCommand seos_state_machine(Seos* seos, Iso14443_4aPoller* iso14443_4a_poller)
     furi_assert(seos);
     NfcCommand ret = NfcCommandContinue;
 
-    SeosReader* seos_reader = seos_reader_alloc(&seos->credential, iso14443_4a_poller);
+    SeosReader* seos_reader = seos_reader_alloc(seos->credential, iso14443_4a_poller);
     seos->seos_reader = seos_reader;
 
     do {

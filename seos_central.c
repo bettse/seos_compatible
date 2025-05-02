@@ -17,7 +17,7 @@ SeosCentral* seos_central_alloc(Seos* seos) {
     SeosCentral* seos_central = malloc(sizeof(SeosCentral));
     memset(seos_central, 0, sizeof(SeosCentral));
     seos_central->seos = seos;
-    seos_central->credential = &seos->credential;
+    seos_central->credential = seos->credential;
 
     seos_central->phase = SELECT_AID;
     // Using DES for greater compatibilty

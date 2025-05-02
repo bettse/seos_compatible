@@ -71,7 +71,7 @@ SeosNativePeripheral* seos_native_peripheral_alloc(Seos* seos) {
     memset(seos_native_peripheral, 0, sizeof(SeosNativePeripheral));
 
     seos_native_peripheral->seos = seos;
-    seos_native_peripheral->credential = &seos->credential;
+    seos_native_peripheral->credential = seos->credential;
     seos_native_peripheral->bt = furi_record_open(RECORD_BT);
 
     seos_native_peripheral->phase = SELECT_AID;
@@ -315,7 +315,6 @@ void seos_native_peripheral_process_message_reader(
         bit_buffer_append_bytes(response, select_adf_header, sizeof(select_adf_header));
         bit_buffer_append_bytes(response, SEOS_ADF_OID, SEOS_ADF_OID_LEN);
         seos_native_peripheral->phase = SELECT_ADF;
-
     } else if(memcmp(data + 1, cd02, sizeof(cd02)) == 0) {
         BitBuffer* attribute_value = bit_buffer_alloc(message.len);
         bit_buffer_append_bytes(attribute_value, message.buf, message.len);

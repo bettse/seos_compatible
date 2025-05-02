@@ -22,7 +22,7 @@ SeosCharacteristic* seos_characteristic_alloc(Seos* seos) {
     SeosCharacteristic* seos_characteristic = malloc(sizeof(SeosCharacteristic));
     memset(seos_characteristic, 0, sizeof(SeosCharacteristic));
     seos_characteristic->seos = seos;
-    seos_characteristic->credential = &seos->credential;
+    seos_characteristic->credential = seos->credential;
 
     seos_characteristic->phase = SELECT_AID;
     seos_characteristic->secure_messaging = NULL;

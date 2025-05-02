@@ -8,7 +8,7 @@ bool seos_load_keys(Seos* seos) {
     const char* file_header = "Seos keys";
     const uint32_t file_version = 1;
     bool parsed = false;
-    FlipperFormat* file = flipper_format_file_alloc(seos->storage);
+    FlipperFormat* file = flipper_format_file_alloc(seos->credential->storage);
     FuriString* path = furi_string_alloc();
     FuriString* temp_str = furi_string_alloc();
     uint32_t version = 0;
@@ -119,14 +119,8 @@ Seos* seos_alloc() {
     seos->widget = widget_alloc();
     view_dispatcher_add_view(seos->view_dispatcher, SeosViewWidget, widget_get_view(seos->widget));
 
-    seos->storage = furi_record_open(RECORD_STORAGE);
-    seos->dialogs = furi_record_open(RECORD_DIALOGS);
-    seos->load_path = furi_string_alloc();
-
-    seos->credential.diversifier_len = 0;
-    seos->credential.sio_len = 0;
-    seos->credential.adf_oid_len = 0;
-    seos->seos_emulator = seos_emulator_alloc(&seos->credential);
+    seos->credential = seos_credential_alloc();
+    seos->seos_emulator = seos_emulator_alloc(seos->credential);
 
     seos->keys_loaded = seos_load_keys(seos);
 
@@ -182,9 +176,7 @@ void seos_free(Seos* seos) {
     furi_record_close(RECORD_NOTIFICATION);
     seos->notifications = NULL;
 
-    furi_string_free(seos->load_path);
-    furi_record_close(RECORD_STORAGE);
-    furi_record_close(RECORD_DIALOGS);
+    seos_credential_free(seos->credential);
 
     if(seos->seos_emulator) {
         seos_emulator_free(seos->seos_emulator);
@@ -205,72 +197,6 @@ void seos_text_store_set(Seos* seos, const char* text, ...) {
 
 void seos_text_store_clear(Seos* seos) {
     memset(seos->text_store, 0, sizeof(seos->text_store));
-}
-
-bool seos_credential_save(Seos* seos, const char* dev_name) {
-    bool saved = false;
-    FlipperFormat* file = flipper_format_file_alloc(seos->storage);
-    FuriString* temp_str = furi_string_alloc();
-    bool use_load_path = true;
-
-    do {
-        if(use_load_path && !furi_string_empty(seos->load_path)) {
-            // Get directory name
-            path_extract_dirname(furi_string_get_cstr(seos->load_path), temp_str);
-            // Make path to file to save
-            furi_string_cat_printf(temp_str, "/%s%s", dev_name, SEOS_APP_EXTENSION);
-        } else {
-            // First remove file if it was saved
-            furi_string_printf(
-                temp_str, "%s/%s%s", STORAGE_APP_DATA_PATH_PREFIX, dev_name, SEOS_APP_EXTENSION);
-        }
-
-        // Open file
-        if(!flipper_format_file_open_always(file, furi_string_get_cstr(temp_str))) break;
-
-        // Write header
-        if(!flipper_format_write_header_cstr(file, seos_file_header, seos_file_version)) break;
-
-        if(!flipper_format_write_uint32(
-               file, "Diversifier Length", (uint32_t*)&(seos->credential.diversifier_len), 1))
-            break;
-        if(!flipper_format_write_hex(
-               file, "Diversifier", seos->credential.diversifier, seos->credential.diversifier_len))
-            break;
-        if(!flipper_format_write_uint32(
-               file, "SIO Length", (uint32_t*)&(seos->credential.sio_len), 1))
-            break;
-        if(!flipper_format_write_hex(file, "SIO", seos->credential.sio, seos->credential.sio_len))
-            break;
-        if(!flipper_format_write_hex(
-               file, "Priv Key", seos->credential.priv_key, sizeof(seos->credential.priv_key)))
-            break;
-        if(!flipper_format_write_hex(
-               file, "Auth Key", seos->credential.auth_key, sizeof(seos->credential.auth_key)))
-            break;
-        if(seos->credential.adf_response[0] != 0) {
-            flipper_format_write_hex(
-                file,
-                "ADF Response",
-                seos->credential.adf_response,
-                sizeof(seos->credential.adf_response));
-        }
-        if(seos->credential.adf_oid_len > 0) {
-            flipper_format_write_uint32(
-                file, "ADF OID Length", (uint32_t*)&(seos->credential.adf_oid_len), 1);
-            flipper_format_write_hex(
-                file, "ADF OID", seos->credential.adf_oid, seos->credential.adf_oid_len);
-        }
-
-        saved = true;
-    } while(false);
-
-    if(!saved) {
-        dialog_message_show_storage_error(seos->dialogs, "Can not save\nfile");
-    }
-    furi_string_free(temp_str);
-    flipper_format_free(file);
-    return saved;
 }
 
 static const NotificationSequence seos_sequence_blink_start_blue = {
