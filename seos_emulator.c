@@ -30,14 +30,9 @@ SeosEmulator* seos_emulator_alloc(SeosCredential* credential) {
     SeosEmulator* seos_emulator = malloc(sizeof(SeosEmulator));
     memset(seos_emulator, 0, sizeof(SeosEmulator));
 
-    if(credential->adf_response[0] == 0) {
-        // Using DES for greater compatibilty
-        seos_emulator->params.cipher = TWO_KEY_3DES_CBC_MODE;
-        seos_emulator->params.hash = SHA1;
-    } else {
-        seos_emulator->params.cipher = credential->adf_response[2];
-        seos_emulator->params.hash = credential->adf_response[3];
-    }
+    // Using DES for greater compatibilty
+    seos_emulator->params.cipher = TWO_KEY_3DES_CBC_MODE;
+    seos_emulator->params.hash = SHA1;
 
     memset(seos_emulator->params.rndICC, 0x0d, sizeof(seos_emulator->params.rndICC));
     memset(seos_emulator->params.rNonce, 0x0c, sizeof(seos_emulator->params.rNonce));
@@ -268,12 +263,14 @@ void seos_emulator_select_adf(
     BitBuffer* tx_buffer) {
     FURI_LOG_D(TAG, "Select ADF");
     // Shortcut if the credential file contained the hardcoded response
-    if(credential->adf_response[2] != 0x00 && credential->adf_response[2] == params->cipher) {
+    // TODO: check that the ADF for the hardcoded response is the one requested
+    if(credential->adf_response[0] == 0xCD) {
         FURI_LOG_I(TAG, "Using hardcoded ADF Response");
         bit_buffer_append_bytes(
             tx_buffer, credential->adf_response, sizeof(credential->adf_response));
-        bit_buffer_append_bytes(tx_buffer, success, sizeof(success));
-        seos_log_bitbuffer(TAG, "Select ADF (0xcd02...)", tx_buffer);
+
+        params->cipher = credential->adf_response[2];
+        params->hash = credential->adf_response[3];
         return;
     }
 
@@ -320,8 +317,6 @@ void seos_emulator_select_adf(
     uint8_t cmac_prefix[] = {0x8e, 0x08};
     bit_buffer_append_bytes(tx_buffer, cmac_prefix, sizeof(cmac_prefix));
     bit_buffer_append_bytes(tx_buffer, cmac, SEOS_WORKER_CMAC_SIZE);
-
-    seos_log_bitbuffer(TAG, "Select ADF (0xcd02...)", tx_buffer);
 }
 
 NfcCommand seos_worker_listener_inspect_reader(Seos* seos) {
@@ -416,15 +411,14 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
                 credential->adf_oid,
                 credential->adf_oid_len);
             if(p) {
-                seos_log_buffer(TAG, "Select ADF OID(credential)", p, SEOS_ADF_OID_LEN);
+                seos_log_buffer(TAG, "Select ADF OID(credential)", p, credential->adf_oid_len);
 
                 view_dispatcher_send_custom_event(
                     seos->view_dispatcher, SeosCustomEventADFMatched);
 
-                bit_buffer_append_bytes(
-                    seos_emulator->tx_buffer,
-                    credential->adf_response,
-                    sizeof(credential->adf_response));
+                seos_emulator_select_adf(
+                    &seos_emulator->params, seos_emulator->credential, seos_emulator->tx_buffer);
+
                 return ret;
             }
         }
