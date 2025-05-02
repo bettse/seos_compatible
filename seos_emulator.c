@@ -272,6 +272,7 @@ void seos_emulator_select_adf(
         FURI_LOG_I(TAG, "Using hardcoded ADF Response");
         bit_buffer_append_bytes(
             tx_buffer, credential->adf_response, sizeof(credential->adf_response));
+        bit_buffer_append_bytes(tx_buffer, success, sizeof(success));
         seos_log_bitbuffer(TAG, "Select ADF (0xcd02...)", tx_buffer);
         return;
     }

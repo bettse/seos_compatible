@@ -23,7 +23,7 @@ typedef struct {
     uint8_t auth_key[16];
     size_t adf_oid_len;
     uint8_t adf_oid[32];
-    uint8_t adf_response[72];
+    uint8_t adf_response[80];
 
     char name[SEOS_FILE_NAME_MAX_LENGTH + 1];
     FuriString* load_path;

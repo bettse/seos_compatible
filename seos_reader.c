@@ -306,10 +306,16 @@ bool seos_reader_select_adf_response(
     }
 
     memset(credential->adf_response, 0, sizeof(credential->adf_response));
-    memcpy(
-        credential->adf_response,
-        rx_data,
-        bit_buffer_get_size_bytes(rx_buffer) - offset - sizeof(success));
+    size_t response_length = bit_buffer_get_size_bytes(rx_buffer) - offset - sizeof(success);
+    if(response_length > sizeof(credential->adf_response)) {
+        FURI_LOG_W(
+            TAG,
+            "adf_response too large %zu > %zu",
+            response_length,
+            sizeof(credential->adf_response));
+        response_length = sizeof(credential->adf_response);
+    }
+    memcpy(credential->adf_response, rx_data, response_length);
 
     uint8_t* diversifier = clear + 2 + oidLen + 2;
     memcpy(credential->diversifier, diversifier, credential->diversifier_len);
