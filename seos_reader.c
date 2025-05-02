@@ -434,12 +434,15 @@ NfcCommand seos_state_machine(Seos* seos, Iso14443_4aPoller* iso14443_4a_poller)
             break;
         }
 
+        FURI_LOG_D(TAG, "General Authenticate 1");
         ret = seos_reader_general_authenticate_1(seos_reader);
         if(ret == NfcCommandStop) break;
 
+        FURI_LOG_D(TAG, "General Authenticate 2");
         ret = seos_reader_general_authenticate_2(seos_reader);
         if(ret == NfcCommandStop) break;
 
+        FURI_LOG_D(TAG, "Request SIO");
         if(seos_reader_request_sio(seos_reader)) {
             SeosCredential* credential = seos_reader->credential;
             AuthParameters* params = &seos_reader->params;
