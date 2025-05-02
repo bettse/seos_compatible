@@ -24,6 +24,7 @@ typedef struct {
     size_t adf_oid_len;
     uint8_t adf_oid[32];
     uint8_t adf_response[80];
+    bool use_hardcoded;
 
     char name[SEOS_FILE_NAME_MAX_LENGTH + 1];
     FuriString* load_path;

@@ -36,7 +36,9 @@ bool seos_emulator_general_authenticate_2(
     BitBuffer* tx_buffer);
 
 void seos_emulator_select_aid(BitBuffer* tx_buffer);
-void seos_emulator_select_adf(
+bool seos_emulator_select_adf(
+    const uint8_t* oid_list,
+    size_t oid_list_len,
     AuthParameters* params,
     SeosCredential* credential,
     BitBuffer* tx_buffer);

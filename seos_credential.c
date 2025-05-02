@@ -15,6 +15,7 @@ SeosCredential* seos_credential_alloc() {
     seos_credential->load_path = furi_string_alloc();
     seos_credential->storage = furi_record_open(RECORD_STORAGE);
     seos_credential->dialogs = furi_record_open(RECORD_DIALOGS);
+    seos_credential->use_hardcoded = false;
 
     return seos_credential;
 }

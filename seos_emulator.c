@@ -23,8 +23,6 @@ static uint8_t general_authenticate_1[] =
 static uint8_t general_authenticate_1_response_header[] = {0x7c, 0x0a, 0x81, 0x08};
 static uint8_t general_authenticate_2_header[] = {0x00, 0x87, 0x00, 0x01};
 static uint8_t secure_messaging_header[] = {0x0c, 0xcb, 0x3f, 0xff};
-static uint8_t empty[16] =
-    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 
 SeosEmulator* seos_emulator_alloc(SeosCredential* credential) {
     SeosEmulator* seos_emulator = malloc(sizeof(SeosEmulator));
@@ -87,7 +85,10 @@ bool seos_emulator_general_authenticate_2(
 
     params->key_no = rx_data[3];
 
-    if(memcmp(credential->priv_key, empty, sizeof(empty)) == 0) {
+    if(credential->use_hardcoded) {
+        memcpy(params->priv_key, credential->priv_key, sizeof(params->priv_key));
+        memcpy(params->auth_key, credential->auth_key, sizeof(params->auth_key));
+    } else {
         seos_worker_diversify_key(
             SEOS_ADF1_READ,
             credential->diversifier,
@@ -99,10 +100,6 @@ bool seos_emulator_general_authenticate_2(
             params->key_no,
             true,
             params->priv_key);
-    } else {
-        memcpy(params->priv_key, credential->priv_key, sizeof(params->priv_key));
-    }
-    if(memcmp(credential->auth_key, empty, sizeof(empty)) == 0) {
         seos_worker_diversify_key(
             SEOS_ADF1_READ,
             credential->diversifier,
@@ -114,8 +111,6 @@ bool seos_emulator_general_authenticate_2(
             params->key_no,
             false,
             params->auth_key);
-    } else {
-        memcpy(params->auth_key, credential->auth_key, sizeof(params->auth_key));
     }
 
     uint8_t cmac[16];
@@ -257,21 +252,38 @@ void seos_emulator_aes_adf_payload(SeosCredential* credential, uint8_t* buffer) 
     mbedtls_aes_free(&ctx);
 }
 
-void seos_emulator_select_adf(
+bool seos_emulator_select_adf(
+    const uint8_t* oid_list,
+    size_t oid_list_len,
     AuthParameters* params,
     SeosCredential* credential,
     BitBuffer* tx_buffer) {
     FURI_LOG_D(TAG, "Select ADF");
-    // Shortcut if the credential file contained the hardcoded response
-    // TODO: check that the ADF for the hardcoded response is the one requested
-    if(credential->adf_response[0] == 0xCD) {
-        FURI_LOG_I(TAG, "Using hardcoded ADF Response");
-        bit_buffer_append_bytes(
-            tx_buffer, credential->adf_response, sizeof(credential->adf_response));
 
-        params->cipher = credential->adf_response[2];
-        params->hash = credential->adf_response[3];
-        return;
+    void* p = NULL;
+    if(credential->adf_oid_len > 0) {
+        p = memmem(oid_list, oid_list_len, credential->adf_oid, credential->adf_oid_len);
+        if(p) {
+            seos_log_buffer(TAG, "Select ADF OID(credential)", p, credential->adf_oid_len);
+
+            if(credential->adf_response[0] == 0xCD) {
+                FURI_LOG_I(TAG, "Using hardcoded ADF Response");
+                bit_buffer_append_bytes(
+                    tx_buffer, credential->adf_response, sizeof(credential->adf_response));
+
+                params->cipher = credential->adf_response[2];
+                params->hash = credential->adf_response[3];
+                credential->use_hardcoded = true;
+                return true;
+            }
+        }
+    }
+    // Next we try to match the ADF OID from the keys file
+    p = memmem(oid_list, oid_list_len, SEOS_ADF_OID, SEOS_ADF_OID_LEN);
+    if(p) {
+        seos_log_buffer(TAG, "Select ADF OID(keys)", p, SEOS_ADF_OID_LEN);
+    } else {
+        return false;
     }
 
     size_t prefix_len = bit_buffer_get_size_bytes(tx_buffer);
@@ -317,6 +329,7 @@ void seos_emulator_select_adf(
     uint8_t cmac_prefix[] = {0x8e, 0x08};
     bit_buffer_append_bytes(tx_buffer, cmac_prefix, sizeof(cmac_prefix));
     bit_buffer_append_bytes(tx_buffer, cmac, SEOS_WORKER_CMAC_SIZE);
+    return true;
 }
 
 NfcCommand seos_worker_listener_inspect_reader(Seos* seos) {
@@ -364,6 +377,7 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
     const uint8_t* apdu = rx_data + offset;
 
     if(memcmp(apdu, select_header, sizeof(select_header)) == 0) {
+        seos_emulator->credential->use_hardcoded = false;
         if(memcmp(apdu + sizeof(select_header) + 1, standard_seos_aid, sizeof(standard_seos_aid)) ==
            0) {
             seos_emulator_select_aid(seos_emulator->tx_buffer);
@@ -399,35 +413,17 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
                 seos_emulator->tx_buffer, (uint8_t*)FILE_NOT_FOUND, sizeof(FILE_NOT_FOUND));
         }
     } else if(memcmp(apdu, select_adf_header, sizeof(select_adf_header)) == 0) {
-        void* p = NULL;
         // +1 to skip APDU length byte
         const uint8_t* oid_list = apdu + sizeof(select_adf_header) + 1;
         size_t oid_list_len = apdu[sizeof(select_adf_header)];
-        // First we try to match the credential ADF OID
-        SeosCredential* credential = seos_emulator->credential;
-        if(credential->adf_oid_len > 0) {
-            p = memmem(oid_list, oid_list_len, credential->adf_oid, credential->adf_oid_len);
-            if(p) {
-                seos_log_buffer(TAG, "Select ADF OID(credential)", p, credential->adf_oid_len);
 
-                view_dispatcher_send_custom_event(
-                    seos->view_dispatcher, SeosCustomEventADFMatched);
-
-                seos_emulator_select_adf(
-                    &seos_emulator->params, seos_emulator->credential, seos_emulator->tx_buffer);
-
-                return ret;
-            }
-        }
-        // Next we try to match the ADF OID from the keys file
-        p = memmem(oid_list, oid_list_len, SEOS_ADF_OID, SEOS_ADF_OID_LEN);
-        if(p) {
-            seos_log_buffer(TAG, "Select ADF OID(keys)", p, SEOS_ADF_OID_LEN);
-
+        if(seos_emulator_select_adf(
+               oid_list,
+               oid_list_len,
+               &seos_emulator->params,
+               seos_emulator->credential,
+               seos_emulator->tx_buffer)) {
             view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventADFMatched);
-
-            seos_emulator_select_adf(
-                &seos_emulator->params, seos_emulator->credential, seos_emulator->tx_buffer);
         } else {
             FURI_LOG_W(TAG, "Failed to match any ADF OID");
         }
