@@ -173,6 +173,7 @@ void seos_native_peripheral_stop(SeosNativePeripheral* seos_native_peripheral) {
 void seos_native_peripheral_process_message_cred(
     SeosNativePeripheral* seos_native_peripheral,
     NativePeripheralMessage message) {
+    Seos* seos = seos_native_peripheral->seos;
     BitBuffer* response = bit_buffer_alloc(128); // TODO: MTU
 
     uint8_t* data = message.buf;
@@ -191,13 +192,26 @@ void seos_native_peripheral_process_message_cred(
             bit_buffer_append_bytes(response, (uint8_t*)file_not_found, sizeof(file_not_found));
         }
     } else if(memcmp(apdu, select_adf_header, sizeof(select_adf_header)) == 0) {
-        // is our adf in the list?
+        void* p = NULL;
         // +1 to skip APDU length byte
-        void* p = memmem(
-            apdu + sizeof(select_adf_header) + 1,
-            apdu[sizeof(select_adf_header)],
-            SEOS_ADF_OID,
-            SEOS_ADF_OID_LEN);
+        const uint8_t* oid_list = apdu + sizeof(select_adf_header) + 1;
+        size_t oid_list_len = apdu[sizeof(select_adf_header)];
+        // First we try to match the credential ADF OID
+        SeosCredential* credential = seos_native_peripheral->credential;
+        if(credential->adf_oid_len > 0) {
+            p = memmem(oid_list, oid_list_len, credential->adf_oid, credential->adf_oid_len);
+            if(p) {
+                seos_log_buffer(TAG, "Select ADF OID(credential)", p, credential->adf_oid_len);
+
+                view_dispatcher_send_custom_event(
+                    seos->view_dispatcher, SeosCustomEventADFMatched);
+
+                seos_emulator_select_adf(&seos_native_peripheral->params, credential, response);
+                return;
+            }
+        }
+
+        p = memmem(oid_list, oid_list_len, SEOS_ADF_OID, SEOS_ADF_OID_LEN);
         if(p) {
             seos_log_buffer(TAG, "Matched ADF", p, SEOS_ADF_OID_LEN);
 
