@@ -16,25 +16,15 @@ void seos_scene_migrate_keys_on_enter(void* context) {
     Seos* seos = context;
     Widget* widget = seos->widget;
 
-    FuriString* one = furi_string_alloc_set("Migrate keys from v1");
-    FuriString* two = furi_string_alloc_set("to v2, which features");
-    FuriString* three = furi_string_alloc_set("per-device encryption");
+    FuriString* temp_str =
+        furi_string_alloc_set("Migrate keys from v1 to v2, which features per-device encryption");
+
+    widget_add_text_scroll_element(widget, 0, 0, 128, 52, furi_string_get_cstr(temp_str));
 
     widget_add_button_element(
         widget, GuiButtonTypeCenter, "Do it", seos_scene_migrate_keys_widget_callback, seos);
 
-    widget_add_string_element(
-        widget, 0, 0, AlignLeft, AlignTop, FontKeyboard, furi_string_get_cstr(one));
-
-    widget_add_string_element(
-        widget, 0, 10, AlignLeft, AlignTop, FontKeyboard, furi_string_get_cstr(two));
-
-    widget_add_string_element(
-        widget, 0, 20, AlignLeft, AlignTop, FontKeyboard, furi_string_get_cstr(three));
-
-    furi_string_free(one);
-    furi_string_free(two);
-    furi_string_free(three);
+    furi_string_free(temp_str);
     view_dispatcher_switch_to_view(seos->view_dispatcher, SeosViewWidget);
 }
 
