@@ -92,6 +92,8 @@ SeosNativePeripheral* seos_native_peripheral_alloc(Seos* seos) {
         furi_message_queue_alloc(MESSAGE_QUEUE_SIZE, sizeof(NativePeripheralMessage));
     seos_native_peripheral->mq_mutex = furi_mutex_alloc(FuriMutexTypeNormal);
 
+    seos_native_peripheral->rx_buffer = bit_buffer_alloc(128); // TODO: MTU
+
     return seos_native_peripheral;
 }
 
@@ -103,6 +105,8 @@ void seos_native_peripheral_free(SeosNativePeripheral* seos_native_peripheral) {
     furi_message_queue_free(seos_native_peripheral->messages);
     furi_mutex_free(seos_native_peripheral->mq_mutex);
     furi_thread_free(seos_native_peripheral->thread);
+
+    bit_buffer_free(seos_native_peripheral->rx_buffer);
 
     free(seos_native_peripheral);
 }
@@ -297,29 +301,47 @@ void seos_native_peripheral_process_message_cred(
 void seos_native_peripheral_process_message_reader(
     SeosNativePeripheral* seos_native_peripheral,
     NativePeripheralMessage message) {
-    BitBuffer* response = bit_buffer_alloc(128); // TODO: MTU
 
-    uint8_t* data = message.buf;
-    uint8_t* rx_data = data + 1; // Match name to nfc version for easier copying
+    uint8_t flags = message.buf[0];
 
-    if(data[0] != BLE_START && data[0] != 0xe1) {
-        FURI_LOG_W(TAG, "Unexpected start of BLE packet");
+    // Check for start-of-message flag
+    if((flags & 0x80) == 0x80) {
+        bit_buffer_reset(seos_native_peripheral->rx_buffer);
+    } else {
+        if (bit_buffer_get_size_bytes(seos_native_peripheral->rx_buffer) == 0) {
+            FURI_LOG_W(TAG, "Expected start of BLE packet");
+            return;
+        }
     }
 
-    if(memcmp(data + 5, standard_seos_aid, sizeof(standard_seos_aid)) == 0) { // response to select
+    bit_buffer_append_bytes(seos_native_peripheral->rx_buffer, message.buf + 1, message.len - 1);
+    
+    // Only parse if end-of-message flag found
+    if((flags & 0x40) == 0x00) return;
+
+    // Check for unknown flag, possibly connection close request?
+    if((flags & 0x20) == 0x20) return;
+    
+    BitBuffer* response = bit_buffer_alloc(128); // TODO: MTU
+
+    const uint8_t *rx_data = bit_buffer_get_data(seos_native_peripheral->rx_buffer);
+    const size_t rx_len = bit_buffer_get_size_bytes(seos_native_peripheral->rx_buffer);
+
+    if(memcmp(rx_data + 4, standard_seos_aid, sizeof(standard_seos_aid)) == 0) { // response to select
         FURI_LOG_I(TAG, "Select ADF");
         uint8_t select_adf_header[] = {
             0x80, 0xa5, 0x04, 0x00, (uint8_t)SEOS_ADF_OID_LEN + 2, 0x06, (uint8_t)SEOS_ADF_OID_LEN};
 
         bit_buffer_append_bytes(response, select_adf_header, sizeof(select_adf_header));
         bit_buffer_append_bytes(response, SEOS_ADF_OID, SEOS_ADF_OID_LEN);
+        bit_buffer_append_byte(response, 0x00);
         seos_native_peripheral->phase = SELECT_ADF;
-    } else if(memcmp(data + 1, cd02, sizeof(cd02)) == 0) {
-        BitBuffer* attribute_value = bit_buffer_alloc(message.len);
-        bit_buffer_append_bytes(attribute_value, message.buf, message.len);
+    } else if(memcmp(rx_data, cd02, sizeof(cd02)) == 0) {
+        BitBuffer* attribute_value = bit_buffer_alloc(rx_len);
+        bit_buffer_append_bytes(attribute_value, rx_data, rx_len);
         if(seos_reader_select_adf_response(
                attribute_value,
-               1,
+               0,
                seos_native_peripheral->credential,
                &seos_native_peripheral->params)) {
             // Craft response
@@ -329,8 +351,8 @@ void seos_native_peripheral_process_message_reader(
             seos_native_peripheral->phase = GENERAL_AUTHENTICATION_1;
         }
         bit_buffer_free(attribute_value);
-    } else if(memcmp(data + 1, ga1_response, sizeof(ga1_response)) == 0) {
-        memcpy(seos_native_peripheral->params.rndICC, data + 5, 8);
+    } else if(memcmp(rx_data, ga1_response, sizeof(ga1_response)) == 0) {
+        memcpy(seos_native_peripheral->params.rndICC, rx_data + 4, 8);
 
         // Craft response
         uint8_t cryptogram[32 + 8];
@@ -351,6 +373,7 @@ void seos_native_peripheral_process_message_reader(
 
         bit_buffer_append_bytes(response, ga_header, sizeof(ga_header));
         bit_buffer_append_bytes(response, cryptogram, sizeof(cryptogram));
+        bit_buffer_append_byte(response, 0x00);
 
         seos_native_peripheral->phase = GENERAL_AUTHENTICATION_2;
     } else if(rx_data[0] == 0x7C && rx_data[2] == 0x82) { // ga2 response
@@ -383,8 +406,8 @@ void seos_native_peripheral_process_message_reader(
         SeosCredential* credential = seos_native_peripheral->credential;
         AuthParameters* params = &seos_native_peripheral->params;
 
-        BitBuffer* rx_buffer = bit_buffer_alloc(message.len - 1);
-        bit_buffer_append_bytes(rx_buffer, rx_data, message.len - 1);
+        BitBuffer* rx_buffer = bit_buffer_alloc(rx_len - 1);
+        bit_buffer_append_bytes(rx_buffer, rx_data, rx_len - 1);
         seos_log_bitbuffer(TAG, "BLE response(wrapped)", rx_buffer);
         secure_messaging_unwrap_rapdu(secure_messaging, rx_buffer);
         seos_log_bitbuffer(TAG, "BLE response(clear)", rx_buffer);
@@ -410,24 +433,16 @@ void seos_native_peripheral_process_message_reader(
 
         seos_native_peripheral->phase = SELECT_AID;
 
-    } else if(data[0] == 0xe1) {
-        //ignore
     } else {
         FURI_LOG_W(TAG, "No match for write request");
-        seos_log_buffer(TAG, "No match for reader incoming", message.buf, message.len);
+        seos_log_buffer(TAG, "No match for reader incoming", rx_data, rx_len);
     }
 
     if(bit_buffer_get_size_bytes(response) > 0) {
-        BitBuffer* tx = bit_buffer_alloc(1 + 2 + 1 + bit_buffer_get_size_bytes(response));
-
-        bit_buffer_append_byte(tx, BLE_START);
-        bit_buffer_append_bytes(
-            tx, bit_buffer_get_data(response), bit_buffer_get_size_bytes(response));
         ble_profile_seos_tx(
             seos_native_peripheral->ble_profile,
-            (uint8_t*)bit_buffer_get_data(tx),
-            bit_buffer_get_size_bytes(tx));
-        bit_buffer_free(tx);
+            (uint8_t*)bit_buffer_get_data(response),
+            bit_buffer_get_size_bytes(response));
     }
 
     bit_buffer_free(response);
