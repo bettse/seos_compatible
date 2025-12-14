@@ -134,10 +134,10 @@ bool ble_profile_seos_tx(FuriHalBleProfileBase* profile, uint8_t* data, uint16_t
     }
 
 
-    uint16_t num_chunks = size / 19;
-    if (size % 19) num_chunks++;
+    uint16_t num_chunks = size / BLE_CHUNK_SIZE;
+    if (size % BLE_CHUNK_SIZE) num_chunks++;
 
-    uint8_t chunk[20];
+    uint8_t chunk[BLE_CHUNK_SIZE + 1];
     for (uint16_t i=0; i<num_chunks; i++) {
         uint8_t flags = 0;
         if (i == 0) flags |= 0x80; // Start-of-message
@@ -146,13 +146,13 @@ bool ble_profile_seos_tx(FuriHalBleProfileBase* profile, uint8_t* data, uint16_t
         flags |= (num_chunks - 1 - i) & 0x0F;
 
         // Find number of bytes left to send
-        uint8_t chunk_size = size - (i * 19);
-        // Limit to only 19 bytes
-        chunk_size = chunk_size > 19 ? 19 : chunk_size;
+        uint8_t chunk_size = size - (i * BLE_CHUNK_SIZE);
+        // Limit to chunk size bytes
+        chunk_size = chunk_size > BLE_CHUNK_SIZE ? BLE_CHUNK_SIZE : chunk_size;
 
         // Combine and send
         chunk[0] = flags;
-        memcpy(chunk+1, &data[i * 19], chunk_size);
+        memcpy(chunk+1, &data[i * BLE_CHUNK_SIZE], chunk_size);
         if (!ble_svc_seos_update_tx(seos_profile->seos_svc, chunk, chunk_size + 1))
             return false;
     }
