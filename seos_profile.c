@@ -140,14 +140,14 @@ bool ble_profile_seos_tx(FuriHalBleProfileBase* profile, uint8_t* data, uint16_t
     uint8_t chunk[BLE_CHUNK_SIZE + 1];
     for (uint16_t i=0; i<num_chunks; i++) {
         uint8_t flags = 0;
-        if (i == 0) flags |= 0x80; // Start-of-message
-        if (i == num_chunks-1) flags |= 0x40; // End-of-message
+        if (i == 0) flags |= BLE_FLAG_SOM;
+        if (i == num_chunks-1) flags |= BLE_FLAG_EOM;
         // Add number of remaining chunks to lower nybble
         flags |= (num_chunks - 1 - i) & 0x0F;
 
         // Find number of bytes left to send
         uint8_t chunk_size = size - (i * BLE_CHUNK_SIZE);
-        // Limit to chunk size bytes
+        // Limit to maximum chunk size
         chunk_size = chunk_size > BLE_CHUNK_SIZE ? BLE_CHUNK_SIZE : chunk_size;
 
         // Combine and send

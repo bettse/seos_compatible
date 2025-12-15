@@ -19,6 +19,10 @@ extern "C" {
 // Total length = BLE_CHUNK_SIZE + 1
 #define BLE_CHUNK_SIZE 19
 
+#define BLE_FLAG_SOM 0x80
+#define BLE_FLAG_EOM 0x40
+#define BLE_FLAG_ERR 0x20
+
 typedef enum {
     SeosServiceEventTypeDataReceived,
     SeosServiceEventTypeDataSent,

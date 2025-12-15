@@ -180,12 +180,31 @@ void seos_native_peripheral_process_message_cred(
     Seos* seos = seos_native_peripheral->seos;
     BitBuffer* response = bit_buffer_alloc(128); // TODO: MTU
 
-    uint8_t* data = message.buf;
-    if(data[0] != BLE_START && data[0] != 0xe1) {
-        FURI_LOG_W(TAG, "Unexpected start of BLE packet");
+    uint8_t flags = message.buf[0];
+
+    // Check for error flag
+    if((flags & BLE_FLAG_ERR) == BLE_FLAG_ERR) {
+        seos_log_buffer(TAG, "Received error response", message.buf + 1, message.len - 1);
+        return;
     }
 
-    const uint8_t* apdu = data + 1; // Match name to nfc version for easier copying
+    // Check for start-of-message flag
+    if((flags & BLE_FLAG_SOM) == BLE_FLAG_SOM) {
+        bit_buffer_reset(seos_native_peripheral->rx_buffer);
+    } else {
+        if (bit_buffer_get_size_bytes(seos_native_peripheral->rx_buffer) == 0) {
+            FURI_LOG_W(TAG, "Expected start of BLE packet");
+            return;
+        }
+    }
+
+    bit_buffer_append_bytes(seos_native_peripheral->rx_buffer, message.buf + 1, message.len - 1);
+    
+    // Only parse if end-of-message flag found
+    if((flags & BLE_FLAG_EOM) == BLE_FLAG_EOM) return;
+    
+    const uint8_t *apdu = bit_buffer_get_data(seos_native_peripheral->rx_buffer);
+    const size_t apdu_len = bit_buffer_get_size_bytes(seos_native_peripheral->rx_buffer);
 
     if(memcmp(apdu, select_header, sizeof(select_header)) == 0) {
         if(memcmp(apdu + sizeof(select_header) + 1, standard_seos_aid, sizeof(standard_seos_aid)) ==
@@ -217,7 +236,7 @@ void seos_native_peripheral_process_message_cred(
     } else if(memcmp(apdu, general_authenticate_2_header, sizeof(general_authenticate_2_header)) == 0) {
         if(!seos_emulator_general_authenticate_2(
                apdu,
-               message.len - 1,
+               apdu_len,
                seos_native_peripheral->credential,
                &seos_native_peripheral->params,
                response)) {
@@ -237,12 +256,9 @@ void seos_native_peripheral_process_message_cred(
         if(seos_native_peripheral->secure_messaging) {
             FURI_LOG_D(TAG, "Unwrap secure message");
 
-            // c0 0ccb3fff 16 8508fa8395d30de4e8e097008e085da7edbd833b002d00
-            // Ignore 1 BLE_START byte
-            size_t bytes_to_ignore = 1;
-            BitBuffer* tmp = bit_buffer_alloc(message.len);
-            bit_buffer_append_bytes(
-                tmp, message.buf + bytes_to_ignore, message.len - bytes_to_ignore);
+            // 0ccb3fff 16 8508fa8395d30de4e8e097008e085da7edbd833b002d00
+            BitBuffer* tmp = bit_buffer_alloc(apdu_len);
+            bit_buffer_append_bytes(tmp, apdu, apdu_len);
 
             seos_log_bitbuffer(TAG, "received(wrapped)", tmp);
             secure_messaging_unwrap_apdu(seos_native_peripheral->secure_messaging, tmp);
@@ -270,29 +286,19 @@ void seos_native_peripheral_process_message_cred(
 
                 bit_buffer_free(sio_file);
             }
-
-            bit_buffer_free(tmp);
         } else {
             uint8_t no_sm[] = {0x69, 0x88};
             bit_buffer_append_bytes(response, no_sm, sizeof(no_sm));
         }
-    } else if(data[0] == 0xe1) {
-        // ignore
     } else {
         FURI_LOG_W(TAG, "no match for message");
     }
 
     if(bit_buffer_get_size_bytes(response) > 0) {
-        BitBuffer* tx = bit_buffer_alloc(1 + 2 + 1 + bit_buffer_get_size_bytes(response));
-
-        bit_buffer_append_byte(tx, BLE_START);
-        bit_buffer_append_bytes(
-            tx, bit_buffer_get_data(response), bit_buffer_get_size_bytes(response));
         ble_profile_seos_tx(
             seos_native_peripheral->ble_profile,
-            (uint8_t*)bit_buffer_get_data(tx),
-            bit_buffer_get_size_bytes(tx));
-        bit_buffer_free(tx);
+            (uint8_t*)bit_buffer_get_data(response),
+            bit_buffer_get_size_bytes(response));
     }
 
     bit_buffer_free(response);
@@ -304,8 +310,14 @@ void seos_native_peripheral_process_message_reader(
 
     uint8_t flags = message.buf[0];
 
+    // Check for error flag
+    if((flags & BLE_FLAG_ERR) == BLE_FLAG_ERR) {
+        seos_log_buffer(TAG, "Received error response", message.buf + 1, message.len - 1);
+        return;
+    }
+
     // Check for start-of-message flag
-    if((flags & 0x80) == 0x80) {
+    if((flags & BLE_FLAG_SOM) == BLE_FLAG_SOM) {
         bit_buffer_reset(seos_native_peripheral->rx_buffer);
     } else {
         if (bit_buffer_get_size_bytes(seos_native_peripheral->rx_buffer) == 0) {
@@ -317,10 +329,7 @@ void seos_native_peripheral_process_message_reader(
     bit_buffer_append_bytes(seos_native_peripheral->rx_buffer, message.buf + 1, message.len - 1);
     
     // Only parse if end-of-message flag found
-    if((flags & 0x40) == 0x00) return;
-
-    // Check for unknown flag, possibly connection close request?
-    if((flags & 0x20) == 0x20) return;
+    if((flags & BLE_FLAG_EOM) == BLE_FLAG_EOM) return;
     
     BitBuffer* response = bit_buffer_alloc(128); // TODO: MTU
 
