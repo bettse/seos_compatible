@@ -329,7 +329,7 @@ void seos_characteristic_write_request(void* context, BitBuffer* attribute_value
 
     // Check for error flag
     if((flags & BLE_FLAG_ERR) == BLE_FLAG_ERR) {
-        seos_log_buffer(TAG, "Received error response", data + 1, len - 1);
+        seos_log_buffer(TAG, "Received error response", (uint8_t*)(data + 1), len - 1);
         return;
     }
 

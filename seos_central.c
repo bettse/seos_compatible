@@ -61,7 +61,7 @@ void seos_central_notify(void* context, const uint8_t* buffer, size_t buffer_len
 
     // Check for error flag
     if((flags & BLE_FLAG_ERR) == BLE_FLAG_ERR) {
-        seos_log_buffer(TAG, "Received error response", buffer + 1, buffer_len - 1);
+        seos_log_buffer(TAG, "Received error response", (uint8_t*)(buffer + 1), buffer_len - 1);
         return;
     }
 
