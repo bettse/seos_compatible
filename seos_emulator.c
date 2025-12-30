@@ -546,26 +546,16 @@ NfcCommand seos_worker_listener_callback(NfcGenericEvent event, void* context) {
                    sizeof(FILE_NOT_FOUND)) != 0) {
                 bit_buffer_append_bytes(tx_buffer, success, sizeof(success));
             }
+        }
 
-            iso14443_crc_append(Iso14443CrcTypeA, tx_buffer);
+        iso14443_crc_append(Iso14443CrcTypeA, tx_buffer);
 
-            seos_log_bitbuffer(TAG, "NFC transmit", seos_emulator->tx_buffer);
+        seos_log_bitbuffer(TAG, "NFC transmit", seos_emulator->tx_buffer);
 
-            NfcError error = nfc_listener_tx((Nfc*)iso14443_listener, tx_buffer);
-            if(error != NfcErrorNone) {
-                FURI_LOG_W(TAG, "Tx error: %d", error);
-                break;
-            }
-        } else {
-            iso14443_crc_append(Iso14443CrcTypeA, tx_buffer);
-
-            seos_log_bitbuffer(TAG, "NFC transmit", seos_emulator->tx_buffer);
-
-            NfcError error = nfc_listener_tx((Nfc*)iso14443_listener, tx_buffer);
-            if(error != NfcErrorNone) {
-                FURI_LOG_W(TAG, "Tx error: %d", error);
-                break;
-            }
+        NfcError error = nfc_listener_tx((Nfc*)iso14443_listener, tx_buffer);
+        if(error != NfcErrorNone) {
+            FURI_LOG_W(TAG, "Tx error: %d", error);
+            break;
         }
         break;
     case Iso14443_4aListenerEventTypeHalted:
