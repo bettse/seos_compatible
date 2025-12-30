@@ -507,8 +507,7 @@ NfcCommand seos_worker_listener_callback(NfcGenericEvent event, void* context) {
 
     NfcCommand ret = NfcCommandContinue;
     Iso14443_4aListenerEvent* iso14443_4a_event = event.event_data;
-    Iso14443_3aListener* iso14443_listener = event.instance;
-    seos_emulator->iso14443_listener = iso14443_listener;
+    Iso14443_4aListener* iso14443_4a_listener = event.instance;
 
     BitBuffer* tx_buffer = seos_emulator->tx_buffer;
     bit_buffer_reset(tx_buffer);
@@ -552,7 +551,7 @@ NfcCommand seos_worker_listener_callback(NfcGenericEvent event, void* context) {
 
         seos_log_bitbuffer(TAG, "NFC transmit", seos_emulator->tx_buffer);
 
-        NfcError error = nfc_listener_tx((Nfc*)iso14443_listener, tx_buffer);
+        NfcError error = nfc_listener_tx(iso14443_4a_listener->iso14443_3a_listener->nfc, tx_buffer);
         if(error != NfcErrorNone) {
             FURI_LOG_W(TAG, "Tx error: %d", error);
             break;
