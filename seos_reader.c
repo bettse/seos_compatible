@@ -241,6 +241,14 @@ NfcCommand seos_reader_select_adf(SeosReader* seos_reader) {
         return NfcCommandStop;
     }
     seos_log_bitbuffer(TAG, "NFC response", rx_buffer);
+    if(memcmp(
+           bit_buffer_get_data(rx_buffer) + bit_buffer_get_size_bytes(rx_buffer) - sizeof(success),
+           success,
+           sizeof(success)) != 0) {
+        FURI_LOG_W(TAG, "Non-success response");
+        return NfcCommandStop;
+    }
+
     bit_buffer_reset(tx_buffer);
     return ret;
 }
@@ -361,6 +369,14 @@ NfcCommand seos_reader_general_authenticate_1(SeosReader* seos_reader) {
     bit_buffer_reset(tx_buffer);
 
     seos_log_bitbuffer(TAG, "NFC response", rx_buffer);
+    if(memcmp(
+           bit_buffer_get_data(rx_buffer) + bit_buffer_get_size_bytes(rx_buffer) - sizeof(success),
+           success,
+           sizeof(success)) != 0) {
+        FURI_LOG_W(TAG, "Non-success response");
+        return NfcCommandStop;
+    }
+
     // 7c0a8108018cde7d6049edb09000
 
     uint8_t expected_header[] = {0x7c, 0x0a, 0x81, 0x08};
@@ -402,6 +418,13 @@ NfcCommand seos_reader_general_authenticate_2(SeosReader* seos_reader) {
     bit_buffer_reset(tx_buffer);
 
     seos_log_bitbuffer(TAG, "NFC response", rx_buffer);
+    if(memcmp(
+           bit_buffer_get_data(rx_buffer) + bit_buffer_get_size_bytes(rx_buffer) - sizeof(success),
+           success,
+           sizeof(success)) != 0) {
+        FURI_LOG_W(TAG, "Non-success response");
+        return NfcCommandStop;
+    }
 
     const uint8_t* rx_data = bit_buffer_get_data(rx_buffer);
     if(rx_data[0] != 0x7C || rx_data[2] != 0x82) {
