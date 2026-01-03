@@ -452,14 +452,14 @@ NfcCommand seos_state_machine(Seos* seos, Iso14443_4aPoller* iso14443_4a_poller)
             credential->adf_oid_len = SEOS_ADF_OID_LEN;
             memcpy(credential->adf_oid, SEOS_ADF_OID, sizeof(credential->adf_oid));
 
-            view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventReaderSuccess);
+            view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventPollerSuccess);
         }
 
     } while(false);
 
     // An error occurred
     if(ret == NfcCommandStop) {
-        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventReaderError);
+        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventPollerError);
     }
     seos_reader_free(seos_reader);
 

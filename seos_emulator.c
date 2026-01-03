@@ -597,7 +597,7 @@ NfcCommand seos_worker_listener_callback(NfcGenericEvent event, void* context) {
     }
 
     if(ret == NfcCommandStop) {
-        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventReaderError);
+        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventPollerError);
     }
     return ret;
 }
