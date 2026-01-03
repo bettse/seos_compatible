@@ -394,6 +394,7 @@ NfcCommand seos_reader_general_authenticate_1(SeosReader* seos_reader) {
     Iso14443_4aPoller* iso14443_4a_poller = seos_reader->iso14443_4a_poller;
     BitBuffer* tx_buffer = seos_reader->tx_buffer;
     BitBuffer* rx_buffer = seos_reader->rx_buffer;
+    FURI_LOG_D(TAG, "General Authenticate 1 with key no %d", seos_reader->params.key_no);
 
     NfcCommand ret = NfcCommandContinue;
     Iso14443_4aError error;
@@ -436,6 +437,7 @@ NfcCommand seos_reader_general_authenticate_2(SeosReader* seos_reader) {
     Iso14443_4aPoller* iso14443_4a_poller = seos_reader->iso14443_4a_poller;
     BitBuffer* tx_buffer = seos_reader->tx_buffer;
     BitBuffer* rx_buffer = seos_reader->rx_buffer;
+    FURI_LOG_I(TAG, "General Authenticate 2 with key no %d", seos_reader->params.key_no);
 
     NfcCommand ret = NfcCommandContinue;
     Iso14443_4aError error;
@@ -478,9 +480,10 @@ NfcCommand seos_reader_general_authenticate_2(SeosReader* seos_reader) {
             FURI_LOG_W(TAG, "Card cryptogram failed verification");
             return NfcCommandStop;
         }
-        FURI_LOG_I(TAG, "Authenticated");
+        FURI_LOG_I(TAG, "Authenticated successfully with key no %d", seos_reader->params.key_no);
     } else {
         FURI_LOG_W(TAG, "Unhandled card cryptogram size %d", rx_data[3]);
+        ret = NfcCommandStop;
     }
 
     seos_reader->secure_messaging = secure_messaging_alloc(&seos_reader->params);
@@ -515,11 +518,9 @@ NfcCommand seos_state_machine(Seos* seos, Iso14443_4aPoller* iso14443_4a_poller)
             seos_reader->params.key_no = 1;
         }
 
-        FURI_LOG_D(TAG, "General Authenticate 1");
         ret = seos_reader_general_authenticate_1(seos_reader);
         if(ret == NfcCommandStop) break;
 
-        FURI_LOG_D(TAG, "General Authenticate 2");
         ret = seos_reader_general_authenticate_2(seos_reader);
         if(ret == NfcCommandStop) break;
 
