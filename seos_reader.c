@@ -507,6 +507,7 @@ NfcCommand seos_state_machine(Seos* seos, Iso14443_4aPoller* iso14443_4a_poller)
 
         if(!seos_reader_select_adf_response(
                seos_reader->rx_buffer, 0, seos_reader->credential, &seos_reader->params)) {
+            ret = NfcCommandStop;
             break;
         }
 
