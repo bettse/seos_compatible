@@ -117,7 +117,7 @@ void secure_messaging_wrap_apdu(
     memcpy(clear, message, message_len);
     clear[message_len] = 0x80;
     uint8_t block_size = cipher == AES_128_CBC ? 16 : 8;
-    uint8_t block_count = (message_len + block_size - 1) / block_size;
+    uint8_t block_count = (message_len + block_size) / block_size;
     size_t clear_len = block_count * block_size;
 
     uint8_t encrypted[SECURE_MESSAGING_MAX_SIZE];
