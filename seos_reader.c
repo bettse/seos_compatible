@@ -46,8 +46,11 @@ bool seos_reader_request_sio(SeosReader* seos_reader) {
     BitBuffer* rx_buffer = seos_reader->rx_buffer;
     Iso14443_4aError error;
 
+    uint8_t apdu_header[] = {0x0c, 0xcb, 0x3f, 0xff};
+
     uint8_t message[] = {0x5c, 0x02, 0xff, 0x00};
-    secure_messaging_wrap_apdu(secure_messaging, message, sizeof(message), tx_buffer);
+    secure_messaging_wrap_apdu(
+        secure_messaging, message, sizeof(message), apdu_header, sizeof(apdu_header), tx_buffer);
 
     seos_log_bitbuffer(TAG, "NFC transmit", tx_buffer);
     error = iso14443_4a_poller_send_block(iso14443_4a_poller, tx_buffer, rx_buffer);

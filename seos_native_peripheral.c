@@ -19,6 +19,8 @@ static uint8_t select_adf_header[] = {0x80, 0xa5, 0x04, 0x00};
 static uint8_t general_authenticate_2_header[] = {0x00, 0x87, 0x00, 0x01};
 static uint8_t secure_messaging_header[] = {0x0c, 0xcb, 0x3f, 0xff};
 
+static uint8_t apdu_header[] = {0x0c, 0xcb, 0x3f, 0xff};
+
 int32_t seos_native_peripheral_task(void* context);
 
 typedef struct {
@@ -405,7 +407,8 @@ void seos_native_peripheral_process_message_reader(
         SecureMessaging* secure_messaging = seos_native_peripheral->secure_messaging;
 
         uint8_t message[] = {0x5c, 0x02, 0xff, 0x00};
-        secure_messaging_wrap_apdu(secure_messaging, message, sizeof(message), response);
+        secure_messaging_wrap_apdu(
+            secure_messaging, message, sizeof(message), apdu_header, sizeof(apdu_header), response);
         seos_native_peripheral->phase = REQUEST_SIO;
         view_dispatcher_send_custom_event(
             seos_native_peripheral->seos->view_dispatcher, SeosCustomEventSIORequested);
