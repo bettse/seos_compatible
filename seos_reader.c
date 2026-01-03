@@ -79,8 +79,14 @@ void seos_reader_generate_cryptogram(
     SeosCredential* credential,
     AuthParameters* params,
     uint8_t* cryptogram) {
+    uint8_t* master_key = SEOS_ADF1_READ;
+    if(params->key_no == 0x02) {
+        // Write keyslot
+        master_key = SEOS_ADF1_WRITE;
+    }
+
     seos_worker_diversify_key(
-        SEOS_ADF1_READ,
+        master_key,
         credential->diversifier,
         credential->diversifier_len,
         SEOS_ADF_OID,
@@ -91,7 +97,7 @@ void seos_reader_generate_cryptogram(
         true,
         params->priv_key);
     seos_worker_diversify_key(
-        SEOS_ADF1_READ,
+        master_key,
         credential->diversifier,
         credential->diversifier_len,
         SEOS_ADF_OID,
