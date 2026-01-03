@@ -172,7 +172,7 @@ void seos_characteristic_reader_flow(
         FURI_LOG_I(TAG, "SIO Captured, %d bytes", seos_characteristic->credential->sio_len);
 
         Seos* seos = seos_characteristic->seos;
-        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventReaderSuccess);
+        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventPollerSuccess);
         bit_buffer_free(rx_buffer);
 
         seos_characteristic->phase = SELECT_AID;

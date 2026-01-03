@@ -437,7 +437,7 @@ void seos_native_peripheral_process_message_reader(
         FURI_LOG_I(TAG, "SIO Captured, %d bytes", credential->sio_len);
 
         Seos* seos = seos_native_peripheral->seos;
-        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventReaderSuccess);
+        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventPollerSuccess);
         bit_buffer_free(rx_buffer);
 
         seos_native_peripheral->phase = SELECT_AID;
