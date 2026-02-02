@@ -12,8 +12,6 @@ static uint8_t OPERATION_SELECTOR[] = {0xa0, 0x00, 0x00, 0x03, 0x82, 0x00, 0x2f,
 static uint8_t OPERATION_SELECTOR_POST_RESET[] =
     {0xa0, 0x00, 0x00, 0x03, 0x82, 0x00, 0x31, 0x00, 0x01, 0x01};
 
-static uint8_t SEOS_APPLET_FCI[] =
-    {0x6F, 0x0C, 0x84, 0x0A, 0xA0, 0x00, 0x00, 0x04, 0x40, 0x00, 0x01, 0x01, 0x00, 0x01};
 static uint8_t FILE_NOT_FOUND[] = {0x6A, 0x82};
 static uint8_t success[] = {0x90, 0x00};
 
@@ -54,9 +52,13 @@ void seos_emulator_free(SeosEmulator* seos_emulator) {
     free(seos_emulator);
 }
 
-void seos_emulator_select_aid(BitBuffer* tx_buffer) {
+void seos_emulator_select_aid(BitBuffer* tx_buffer, const uint8_t* aid, size_t aid_len) {
     FURI_LOG_D(TAG, "Select AID");
-    bit_buffer_append_bytes(tx_buffer, SEOS_APPLET_FCI, sizeof(SEOS_APPLET_FCI));
+    bit_buffer_append_byte(tx_buffer, 0x6F); // FCI Template
+    bit_buffer_append_byte(tx_buffer, 2 + aid_len); // length
+    bit_buffer_append_byte(tx_buffer, 0x84); // DF Name
+    bit_buffer_append_byte(tx_buffer, aid_len); // length
+    bit_buffer_append_bytes(tx_buffer, aid, aid_len);
 }
 
 void seos_emulator_general_authenticate_1(BitBuffer* tx_buffer, AuthParameters params) {
@@ -400,9 +402,11 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
         seos_emulator->credential->use_hardcoded = false;
         if(memcmp(apdu + sizeof(select_header) + 1, standard_seos_aid, sizeof(standard_seos_aid)) ==
            0) {
-            seos_emulator_select_aid(seos_emulator->tx_buffer);
+            seos_emulator_select_aid(
+                seos_emulator->tx_buffer,
+                apdu + sizeof(select_header) + 1,
+                sizeof(standard_seos_aid));
             view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventAIDSelected);
-
         } else if(
             memcmp(
                 apdu + sizeof(select_header) + 1,
