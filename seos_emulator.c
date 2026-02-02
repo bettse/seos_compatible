@@ -11,6 +11,7 @@ static uint8_t MOBILE_SEOS_ADMIN_CARD[] =
 static uint8_t OPERATION_SELECTOR[] = {0xa0, 0x00, 0x00, 0x03, 0x82, 0x00, 0x2f, 0x00, 0x01, 0x01};
 static uint8_t OPERATION_SELECTOR_POST_RESET[] =
     {0xa0, 0x00, 0x00, 0x03, 0x82, 0x00, 0x31, 0x00, 0x01, 0x01};
+static uint8_t DESFIRE_ISO_AID[] = {0xd2, 0x76, 0x00, 0x00, 0x85, 0x01, 0x00};
 
 static uint8_t FILE_NOT_FOUND[] = {0x6A, 0x82};
 static uint8_t success[] = {0x90, 0x00};
@@ -429,6 +430,8 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
                 MOBILE_SEOS_ADMIN_CARD,
                 sizeof(MOBILE_SEOS_ADMIN_CARD)) == 0) {
             FURI_LOG_I(TAG, "MOBILE_SEOS_ADMIN_CARD");
+        } else if (memcmp(apdu + sizeof(select_header) + 1, DESFIRE_ISO_AID, sizeof(DESFIRE_ISO_AID)) == 0) {
+            FURI_LOG_I(TAG, "DESFIRE_ISO_AID selected");
             bit_buffer_append_bytes(
                 seos_emulator->tx_buffer, (uint8_t*)FILE_NOT_FOUND, sizeof(FILE_NOT_FOUND));
         } else {
