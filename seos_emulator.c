@@ -496,6 +496,7 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
                 bit_buffer_append_bytes(
                     sio_file, seos_emulator->credential->sio, seos_emulator->credential->sio_len);
 
+                seos_log_bitbuffer(TAG, "NFC send(clear)", sio_file);
                 secure_messaging_wrap_rapdu(
                     seos_emulator->secure_messaging,
                     (uint8_t*)bit_buffer_get_data(sio_file),
