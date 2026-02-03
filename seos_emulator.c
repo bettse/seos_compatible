@@ -4,6 +4,8 @@
 
 #define NAD_MASK 0x08
 
+#define DESFIRE_CLA 0x90
+
 static uint8_t select_header[] = {0x00, 0xa4, 0x04, 0x00};
 static uint8_t standard_seos_aid[] = {0xa0, 0x00, 0x00, 0x04, 0x40, 0x00, 0x01, 0x01, 0x00, 0x01};
 static uint8_t MOBILE_SEOS_ADMIN_CARD[] =
@@ -366,14 +368,18 @@ NfcCommand seos_worker_listener_inspect_reader(Seos* seos) {
         if(memcmp(
                apdu + sizeof(select_header) + 1, OPERATION_SELECTOR, sizeof(OPERATION_SELECTOR)) ==
            0) {
+            FURI_LOG_I(TAG, "OPERATION_SELECTOR");
             uint8_t enableInspection[] = {
                 0x6f, 0x08, 0x85, 0x06, 0x02, 0x01, 0x40, 0x02, 0x01, 0x00};
 
             bit_buffer_append_bytes(tx_buffer, enableInspection, sizeof(enableInspection));
             view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventAIDSelected);
         } else {
+            FURI_LOG_I(TAG, "Inspect mode: reject other AID");
             bit_buffer_append_bytes(tx_buffer, (uint8_t*)FILE_NOT_FOUND, sizeof(FILE_NOT_FOUND));
         }
+    } else if(apdu[0] == DESFIRE_CLA) {
+        FURI_LOG_I(TAG, "Desfire command received: ignore");
     } else if(bit_buffer_get_size_bytes(seos_emulator->rx_buffer) > (size_t)(offset + 2)) {
         FURI_LOG_I(TAG, "NFC stop; %d bytes", bit_buffer_get_size_bytes(seos_emulator->rx_buffer));
         ret = NfcCommandStop;
