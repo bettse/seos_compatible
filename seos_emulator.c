@@ -430,12 +430,16 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
                 MOBILE_SEOS_ADMIN_CARD,
                 sizeof(MOBILE_SEOS_ADMIN_CARD)) == 0) {
             FURI_LOG_I(TAG, "MOBILE_SEOS_ADMIN_CARD");
-        } else if (memcmp(apdu + sizeof(select_header) + 1, DESFIRE_ISO_AID, sizeof(DESFIRE_ISO_AID)) == 0) {
-            FURI_LOG_I(TAG, "DESFIRE_ISO_AID selected");
+            bit_buffer_append_bytes(
+                seos_emulator->tx_buffer, (uint8_t*)FILE_NOT_FOUND, sizeof(FILE_NOT_FOUND));
+        } else if(
+            memcmp(apdu + sizeof(select_header) + 1, DESFIRE_ISO_AID, sizeof(DESFIRE_ISO_AID)) ==
+            0) {
+            FURI_LOG_I(TAG, "DESFIRE_ISO_AID");
             bit_buffer_append_bytes(
                 seos_emulator->tx_buffer, (uint8_t*)FILE_NOT_FOUND, sizeof(FILE_NOT_FOUND));
         } else {
-            seos_log_bitbuffer(TAG, "Reject select", seos_emulator->rx_buffer);
+            seos_log_bitbuffer(TAG, "Reject unknown AID", seos_emulator->rx_buffer);
             bit_buffer_append_bytes(
                 seos_emulator->tx_buffer, (uint8_t*)FILE_NOT_FOUND, sizeof(FILE_NOT_FOUND));
         }
@@ -453,6 +457,8 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
             view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventADFMatched);
         } else {
             FURI_LOG_W(TAG, "Failed to match any ADF OID");
+            bit_buffer_append_bytes(
+                seos_emulator->tx_buffer, (uint8_t*)FILE_NOT_FOUND, sizeof(FILE_NOT_FOUND));
         }
     } else if(memcmp(apdu, general_authenticate_1, sizeof(general_authenticate_1)) == 0) {
         seos_emulator_general_authenticate_1(seos_emulator->tx_buffer, seos_emulator->params);
