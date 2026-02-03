@@ -584,11 +584,13 @@ NfcCommand seos_worker_listener_callback(NfcGenericEvent event, void* context) {
         if(bit_buffer_get_size_bytes(seos_emulator->tx_buffer) >
            offset) { // contents belong iso framing
 
-            if(memcmp(
-                   FILE_NOT_FOUND,
-                   bit_buffer_get_data(tx_buffer) + bit_buffer_get_size_bytes(tx_buffer) -
-                       sizeof(FILE_NOT_FOUND),
-                   sizeof(FILE_NOT_FOUND)) != 0) {
+            uint8_t* statusword = (uint8_t*)bit_buffer_get_data(tx_buffer) +
+                                  bit_buffer_get_size_bytes(tx_buffer) - sizeof(uint16_t);
+            if(memcmp(success, statusword, sizeof(success)) == 0) {
+                // no-op
+            } else if(memcmp(FILE_NOT_FOUND, statusword, sizeof(FILE_NOT_FOUND)) == 0) {
+                // no-op
+            } else {
                 bit_buffer_append_bytes(tx_buffer, success, sizeof(success));
             }
         }
