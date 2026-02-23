@@ -1,17 +1,18 @@
 #include "../seos_i.h"
 
-#define TAG "SceneKeysMenu"
-
-static char** key_files = NULL;
-static uint8_t key_file_count = 0;
+#define TAG           "SceneKeysMenu"
+#define MAX_KEY_FILES 16
 
 enum SubmenuIndex {
     SubmenuIndexZeroKeys = 0,
     SubmenuIndexKeyFileStart = 1,
 };
 
+static char key_filenames[MAX_KEY_FILES][SEOS_FILE_NAME_MAX_LENGTH + 1];
+static uint8_t key_file_count = 0;
+
 // Returns base name length (without .txt) if file matches "keys.txt" or "*_keys.txt" pattern, 0 otherwise
-static size_t is_key_file(const char* name, size_t len) {
+static size_t keyset_name_length(const char* name, size_t len) {
     if(len < 5) return 0;
     if(strcmp(name + len - 4, ".txt") != 0) return 0;
     bool is_keys = (strcmp(name, "keys.txt") == 0);
@@ -31,6 +32,7 @@ void seos_scene_keys_menu_on_enter(void* context) {
     Seos* seos = context;
     Submenu* submenu = seos->submenu;
     submenu_reset(submenu);
+    key_file_count = 0;
 
     bool zero_active = !seos->keys_loaded;
     submenu_add_item(
@@ -40,66 +42,35 @@ void seos_scene_keys_menu_on_enter(void* context) {
         seos_scene_keys_menu_submenu_callback,
         seos);
 
-    // Free any previously allocated key files
-    if(key_files) {
-        for(uint8_t i = 0; i < key_file_count; i++) {
-            free(key_files[i]);
-        }
-        free(key_files);
-        key_files = NULL;
-    }
-    key_file_count = 0;
-
-    // Count matching key files
-    uint8_t file_count = 0;
     File* dir = storage_file_alloc(seos->credential->storage);
     if(storage_dir_open(dir, STORAGE_APP_DATA_PATH_PREFIX)) {
         FileInfo info;
         char name[256];
-        while(storage_dir_read(dir, &info, name, sizeof(name))) {
+        while(storage_dir_read(dir, &info, name, sizeof(name)) && key_file_count < MAX_KEY_FILES) {
             if(info.flags & FSF_DIRECTORY) continue;
-            if(is_key_file(name, strlen(name))) file_count++;
+            size_t base_len = keyset_name_length(name, strlen(name));
+            if(!base_len) continue;
+
+            name[base_len] = '\0';
+            strncpy(key_filenames[key_file_count], name, SEOS_FILE_NAME_MAX_LENGTH);
+            key_filenames[key_file_count][SEOS_FILE_NAME_MAX_LENGTH] = '\0';
+
+            bool is_active = seos->keys_loaded &&
+                             furi_string_equal_str(seos->active_key_file, name);
+
+            char label[SEOS_FILE_NAME_MAX_LENGTH + 4];
+            snprintf(label, sizeof(label), is_active ? "%s *" : "%s", name);
+
+            submenu_add_item(
+                submenu,
+                label,
+                SubmenuIndexKeyFileStart + key_file_count,
+                seos_scene_keys_menu_submenu_callback,
+                seos);
+
+            key_file_count++;
         }
         storage_dir_close(dir);
-    }
-
-    // Allocate array for key files
-    if(file_count > 0) {
-        key_files = malloc(file_count * sizeof(char*));
-
-        // Second pass: populate the array
-        if(storage_dir_open(dir, STORAGE_APP_DATA_PATH_PREFIX)) {
-            FileInfo info;
-            char name[256];
-            while(storage_dir_read(dir, &info, name, sizeof(name))) {
-                if(info.flags & FSF_DIRECTORY) continue;
-                size_t base_len = is_key_file(name, strlen(name));
-                if(!base_len) continue;
-
-                // Allocate and store base name (without .txt)
-                key_files[key_file_count] = malloc(base_len + 1);
-                memcpy(key_files[key_file_count], name, base_len);
-                key_files[key_file_count][base_len] = '\0';
-
-                bool is_active =
-                    seos->keys_loaded &&
-                    furi_string_equal_str(seos->active_key_file, key_files[key_file_count]);
-
-                char label[SEOS_FILE_NAME_MAX_LENGTH + 4];
-                snprintf(
-                    label, sizeof(label), is_active ? "%s *" : "%s", key_files[key_file_count]);
-
-                submenu_add_item(
-                    submenu,
-                    label,
-                    SubmenuIndexKeyFileStart + key_file_count,
-                    seos_scene_keys_menu_submenu_callback,
-                    seos);
-
-                key_file_count++;
-            }
-            storage_dir_close(dir);
-        }
     }
     storage_file_free(dir);
 
@@ -123,16 +94,15 @@ bool seos_scene_keys_menu_on_event(void* context, SceneManagerEvent event) {
             event.event >= SubmenuIndexKeyFileStart &&
             event.event < (uint32_t)(SubmenuIndexKeyFileStart + key_file_count)) {
             uint8_t file_index = event.event - SubmenuIndexKeyFileStart;
-            if(seos_load_keys_from_file(seos, key_files[file_index])) {
+
+            if(seos_load_keys_from_file(seos, key_filenames[file_index])) {
                 if(seos->keys_version == 1) {
-                    // v1 keys: ask user if they want to migrate
                     scene_manager_next_scene(seos->scene_manager, SeosSceneMigrateKeys);
                 } else {
                     scene_manager_search_and_switch_to_previous_scene(
                         seos->scene_manager, SeosSceneMainMenu);
                 }
             } else {
-                // Show error popup to inform user that key file could not be loaded
                 popup_set_header(seos->popup, "Load Failed", 64, 20, AlignCenter, AlignTop);
                 popup_set_text(
                     seos->popup, "Could not load key file", 64, 40, AlignCenter, AlignTop);
@@ -150,14 +120,4 @@ bool seos_scene_keys_menu_on_event(void* context, SceneManagerEvent event) {
 void seos_scene_keys_menu_on_exit(void* context) {
     Seos* seos = context;
     submenu_reset(seos->submenu);
-
-    // Free key files array
-    if(key_files) {
-        for(uint8_t i = 0; i < key_file_count; i++) {
-            free(key_files[i]);
-        }
-        free(key_files);
-        key_files = NULL;
-    }
-    key_file_count = 0;
 }

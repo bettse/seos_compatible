@@ -2,8 +2,6 @@
 
 #define TAG "Seos"
 
-#define SEOS_KEYS_FILENAME "keys"
-
 bool seos_migrate_keys(Seos* seos) {
     const char* file_header = "Seos keys";
     const uint32_t file_version = 2;
@@ -217,22 +215,6 @@ bool seos_load_keys_from_file(Seos* seos, const char* filename) {
     return false;
 }
 
-void seos_reset_to_zero_keys(Seos* seos) {
-    SEOS_ADF_OID_LEN = 9;
-    memset(SEOS_ADF_OID, 0, sizeof(SEOS_ADF_OID));
-    SEOS_ADF_OID[0] = 0x03;
-    SEOS_ADF_OID[1] = 0x01;
-    SEOS_ADF_OID[2] = 0x07;
-    SEOS_ADF_OID[3] = 0x09;
-    memset(SEOS_ADF1_PRIV_ENC, 0, 16);
-    memset(SEOS_ADF1_PRIV_MAC, 0, 16);
-    memset(SEOS_ADF1_READ, 0, 16);
-    memset(SEOS_ADF1_WRITE, 0, 16);
-    seos->keys_loaded = false;
-    seos->keys_version = 0;
-    furi_string_reset(seos->active_key_file);
-}
-
 bool seos_custom_event_callback(void* context, uint32_t event) {
     furi_assert(context);
     Seos* seos = context;
@@ -312,12 +294,7 @@ Seos* seos_alloc() {
     seos->keys_version = 0;
     seos->keys_loaded = false;
 
-    // Try loading default keys file (don't reset on failure during init)
-    if(seos_load_keys_v2(seos, SEOS_KEYS_FILENAME) ||
-       seos_load_keys_v1(seos, SEOS_KEYS_FILENAME)) {
-        seos->keys_loaded = true;
-        furi_string_set_str(seos->active_key_file, SEOS_KEYS_FILENAME);
-    }
+    seos_load_keys_from_file(seos, SEOS_DEFAULT_KEYS_FILENAME);
 
     return seos;
 }

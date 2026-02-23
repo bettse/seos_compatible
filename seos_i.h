@@ -124,9 +124,3 @@ void seos_blink_start(Seos* seos);
 void seos_blink_stop(Seos* seos);
 
 void seos_show_loading_popup(void* context, bool show);
-
-bool seos_migrate_keys(Seos* seos);
-
-bool seos_load_keys_from_file(Seos* seos, const char* filename);
-
-void seos_reset_to_zero_keys(Seos* seos);
