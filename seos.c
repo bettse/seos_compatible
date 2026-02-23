@@ -35,8 +35,13 @@ bool seos_migrate_keys(Seos* seos) {
             break;
         }
 
+        if(furi_string_empty(seos->active_key_file)) break;
         furi_string_printf(
-            path, "%s/%s%s", STORAGE_APP_DATA_PATH_PREFIX, SEOS_KEYS_FILENAME, ".txt");
+            path,
+            "%s/%s%s",
+            STORAGE_APP_DATA_PATH_PREFIX,
+            furi_string_get_cstr(seos->active_key_file),
+            ".txt");
         // Open file
         if(!flipper_format_file_open_existing(file, furi_string_get_cstr(path))) break;
         if(!flipper_format_write_header_cstr(file, file_header, file_version)) break;
@@ -79,7 +84,7 @@ bool seos_migrate_keys(Seos* seos) {
 }
 
 // Version 2 has keys that are encrypted using the per-device key in the secure enclave
-bool seos_load_keys_v2(Seos* seos) {
+bool seos_load_keys_v2(Seos* seos, const char* filename) {
     const char* file_header = "Seos keys";
     const uint32_t file_version = 2;
     bool parsed = false;
@@ -92,8 +97,7 @@ bool seos_load_keys_v2(Seos* seos) {
     uint8_t output[16];
 
     do {
-        furi_string_printf(
-            path, "%s/%s%s", STORAGE_APP_DATA_PATH_PREFIX, SEOS_KEYS_FILENAME, ".txt");
+        furi_string_printf(path, "%s/%s%s", STORAGE_APP_DATA_PATH_PREFIX, filename, ".txt");
         // Open file
         if(!flipper_format_file_open_existing(file, furi_string_get_cstr(path))) break;
         if(!flipper_format_read_header(file, temp_str, &version)) break;
@@ -155,7 +159,7 @@ bool seos_load_keys_v2(Seos* seos) {
     return parsed;
 }
 
-bool seos_load_keys_v1(Seos* seos) {
+bool seos_load_keys_v1(Seos* seos, const char* filename) {
     const char* file_header = "Seos keys";
     const uint32_t file_version = 1;
     bool parsed = false;
@@ -165,8 +169,7 @@ bool seos_load_keys_v1(Seos* seos) {
     uint32_t version = 0;
 
     do {
-        furi_string_printf(
-            path, "%s/%s%s", STORAGE_APP_DATA_PATH_PREFIX, SEOS_KEYS_FILENAME, ".txt");
+        furi_string_printf(path, "%s/%s%s", STORAGE_APP_DATA_PATH_PREFIX, filename, ".txt");
         // Open file
         if(!flipper_format_file_open_existing(file, furi_string_get_cstr(path))) break;
         if(!flipper_format_read_header(file, temp_str, &version)) break;
@@ -198,6 +201,34 @@ bool seos_load_keys_v1(Seos* seos) {
     flipper_format_free(file);
 
     return parsed;
+}
+
+bool seos_load_keys_from_file(Seos* seos, const char* filename) {
+    bool loaded = seos_load_keys_v2(seos, filename);
+    if(!loaded) {
+        loaded = seos_load_keys_v1(seos, filename);
+    }
+    if(loaded) {
+        seos->keys_loaded = true;
+        furi_string_set_str(seos->active_key_file, filename);
+    }
+    return loaded;
+}
+
+void seos_reset_to_zero_keys(Seos* seos) {
+    SEOS_ADF_OID_LEN = 9;
+    memset(SEOS_ADF_OID, 0, sizeof(SEOS_ADF_OID));
+    SEOS_ADF_OID[0] = 0x03;
+    SEOS_ADF_OID[1] = 0x01;
+    SEOS_ADF_OID[2] = 0x07;
+    SEOS_ADF_OID[3] = 0x09;
+    memset(SEOS_ADF1_PRIV_ENC, 0, 16);
+    memset(SEOS_ADF1_PRIV_MAC, 0, 16);
+    memset(SEOS_ADF1_READ, 0, 16);
+    memset(SEOS_ADF1_WRITE, 0, 16);
+    seos->keys_loaded = false;
+    seos->keys_version = 0;
+    furi_string_reset(seos->active_key_file);
 }
 
 bool seos_custom_event_callback(void* context, uint32_t event) {
@@ -275,10 +306,16 @@ Seos* seos_alloc() {
     seos->credential = seos_credential_alloc();
     seos->seos_emulator = seos_emulator_alloc(seos->credential);
 
-    seos->keys_loaded = seos_load_keys_v2(seos);
+    seos->active_key_file = furi_string_alloc();
+    seos->key_file_count = 0;
+
+    seos->keys_loaded = seos_load_keys_v2(seos, SEOS_KEYS_FILENAME);
     if(!seos->keys_loaded) {
         // If version 2 keys failed, try loading version 1
-        seos->keys_loaded = seos_load_keys_v1(seos);
+        seos->keys_loaded = seos_load_keys_v1(seos, SEOS_KEYS_FILENAME);
+    }
+    if(seos->keys_loaded) {
+        furi_string_set_str(seos->active_key_file, SEOS_KEYS_FILENAME);
     }
 
     return seos;
@@ -340,6 +377,8 @@ void seos_free(Seos* seos) {
         seos->seos_emulator = NULL;
     }
 
+    furi_string_free(seos->active_key_file);
+
     free(seos);
 }
 
@@ -393,7 +432,10 @@ int32_t seos_app(void* p) {
     UNUSED(p);
     Seos* seos = seos_alloc();
 
-    if(seos->keys_loaded) {
+    if(seos->keys_loaded && seos->keys_version == 1) {
+        scene_manager_next_scene(seos->scene_manager, SeosSceneMainMenu);
+        scene_manager_next_scene(seos->scene_manager, SeosSceneMigrateKeys);
+    } else if(seos->keys_loaded) {
         scene_manager_next_scene(seos->scene_manager, SeosSceneMainMenu);
     } else {
         scene_manager_next_scene(seos->scene_manager, SeosSceneZeroKeys);
