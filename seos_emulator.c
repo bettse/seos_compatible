@@ -174,7 +174,6 @@ bool seos_emulator_general_authenticate_2(
     uint8_t encrypted[32];
     if(params->cipher == AES_128_CBC) {
         seos_worker_aes_encrypt(params->priv_key, sizeof(clear), clear, encrypted);
-
         aes_cmac(params->auth_key, sizeof(params->auth_key), encrypted, sizeof(encrypted), cmac);
     } else if(params->cipher == TWO_KEY_3DES_CBC_MODE) {
         seos_worker_des_encrypt(params->priv_key, sizeof(clear), clear, encrypted);
@@ -332,7 +331,6 @@ bool seos_emulator_select_adf(
         seos_emulator_des_adf_payload(credential, buffer);
         bit_buffer_append_bytes(tx_buffer, buffer, des_cryptogram_length);
 
-        // +2 / -2 is to ignore iso14a framing
         des_cmac(
             SEOS_ADF1_PRIV_MAC,
             sizeof(SEOS_ADF1_PRIV_MAC),
