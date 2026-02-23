@@ -98,7 +98,6 @@ struct Seos {
     SeosCentral* seos_central;
     FlowMode flow_mode;
 
-    bool keys_loaded;
     uint8_t keys_version;
     FuriString* active_key_file;
     Bt* bt;

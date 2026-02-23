@@ -24,7 +24,6 @@ void seos_reset_to_zero_keys(Seos* seos) {
     memset(SEOS_ADF1_PRIV_MAC, 0, 16);
     memset(SEOS_ADF1_READ, 0, 16);
     memset(SEOS_ADF1_WRITE, 0, 16);
-    seos->keys_loaded = false;
     seos->keys_version = 0;
     furi_string_reset(seos->active_key_file);
 }

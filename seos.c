@@ -13,7 +13,7 @@ bool seos_migrate_keys(Seos* seos) {
     memset(iv, 0, sizeof(iv));
     uint8_t output[16];
 
-    if(!seos->keys_loaded) {
+    if(seos->keys_version == 0) {
         FURI_LOG_E(TAG, "Keys not loaded, can't migrate");
         return false;
     }
@@ -206,7 +206,6 @@ bool seos_load_keys_v1(Seos* seos, const char* filename) {
 
 bool seos_load_keys_from_file(Seos* seos, const char* filename) {
     if(seos_load_keys_v2(seos, filename) || seos_load_keys_v1(seos, filename)) {
-        seos->keys_loaded = true;
         furi_string_set_str(seos->active_key_file, filename);
         return true;
     }
@@ -292,7 +291,6 @@ Seos* seos_alloc() {
 
     seos->active_key_file = furi_string_alloc();
     seos->keys_version = 0;
-    seos->keys_loaded = false;
 
     seos_load_keys_from_file(seos, SEOS_DEFAULT_KEYS_FILENAME);
 
@@ -410,7 +408,7 @@ int32_t seos_app(void* p) {
     UNUSED(p);
     Seos* seos = seos_alloc();
 
-    if(seos->keys_loaded) {
+    if(seos->keys_version > 0) {
         scene_manager_next_scene(seos->scene_manager, SeosSceneMainMenu);
 
         // If v1 keys were loaded, immediately prompt user to migrate to v2 for better security

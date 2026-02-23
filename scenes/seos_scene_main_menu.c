@@ -67,7 +67,7 @@ void seos_scene_main_menu_on_enter(void* context) {
     }
 
     char keys_label[48];
-    if(seos->keys_loaded && !furi_string_empty(seos->active_key_file)) {
+    if(seos->keys_version > 0 && !furi_string_empty(seos->active_key_file)) {
         snprintf(
             keys_label,
             sizeof(keys_label),

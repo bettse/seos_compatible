@@ -34,7 +34,7 @@ void seos_scene_keys_menu_on_enter(void* context) {
     submenu_reset(submenu);
     key_file_count = 0;
 
-    bool zero_active = !seos->keys_loaded;
+    bool zero_active = (seos->keys_version == 0);
     submenu_add_item(
         submenu,
         zero_active ? "Zero Keys *" : "Zero Keys",
@@ -55,7 +55,7 @@ void seos_scene_keys_menu_on_enter(void* context) {
             strncpy(key_filenames[key_file_count], name, SEOS_FILE_NAME_MAX_LENGTH);
             key_filenames[key_file_count][SEOS_FILE_NAME_MAX_LENGTH] = '\0';
 
-            bool is_active = seos->keys_loaded &&
+            bool is_active = seos->keys_version > 0 &&
                              furi_string_equal_str(seos->active_key_file, name);
 
             char label[SEOS_FILE_NAME_MAX_LENGTH + 4];

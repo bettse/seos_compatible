@@ -1,10 +1,9 @@
 #pragma once
 
 #include <stdbool.h>
+#include "seos.h"
 
 #define SEOS_DEFAULT_KEYS_FILENAME "keys"
-
-typedef struct Seos Seos;
 
 extern size_t SEOS_ADF_OID_LEN;
 extern uint8_t SEOS_ADF_OID[32];
