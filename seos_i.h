@@ -101,8 +101,6 @@ struct Seos {
     bool keys_loaded;
     uint8_t keys_version;
     FuriString* active_key_file;
-    char key_files[8][SEOS_FILE_NAME_MAX_LENGTH + 1];
-    uint8_t key_file_count;
     Bt* bt;
     FuriHalBleProfileBase* ble_profile;
     SeosNativePeripheral* native_peripheral;

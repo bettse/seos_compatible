@@ -25,6 +25,16 @@ bool seos_migrate_keys(Seos* seos) {
     }
 
     do {
+        // Check for valid filename first to fail fast
+        if(furi_string_empty(seos->active_key_file)) break;
+
+        furi_string_printf(
+            path,
+            "%s/%s%s",
+            STORAGE_APP_DATA_PATH_PREFIX,
+            furi_string_get_cstr(seos->active_key_file),
+            ".txt");
+
         // Encrypt the keys using the per-device key
         if(!furi_hal_crypto_enclave_ensure_key(FURI_HAL_CRYPTO_ENCLAVE_UNIQUE_KEY_SLOT)) {
             FURI_LOG_E(TAG, "Failed to ensure unique key slot");
@@ -35,13 +45,6 @@ bool seos_migrate_keys(Seos* seos) {
             break;
         }
 
-        if(furi_string_empty(seos->active_key_file)) break;
-        furi_string_printf(
-            path,
-            "%s/%s%s",
-            STORAGE_APP_DATA_PATH_PREFIX,
-            furi_string_get_cstr(seos->active_key_file),
-            ".txt");
         // Open file
         if(!flipper_format_file_open_existing(file, furi_string_get_cstr(path))) break;
         if(!flipper_format_write_header_cstr(file, file_header, file_version)) break;
@@ -204,15 +207,14 @@ bool seos_load_keys_v1(Seos* seos, const char* filename) {
 }
 
 bool seos_load_keys_from_file(Seos* seos, const char* filename) {
-    bool loaded = seos_load_keys_v2(seos, filename);
-    if(!loaded) {
-        loaded = seos_load_keys_v1(seos, filename);
-    }
-    if(loaded) {
+    if(seos_load_keys_v2(seos, filename) || seos_load_keys_v1(seos, filename)) {
         seos->keys_loaded = true;
         furi_string_set_str(seos->active_key_file, filename);
+        return true;
     }
-    return loaded;
+    // Ensure keys are in a known state after a failed load
+    seos_reset_to_zero_keys(seos);
+    return false;
 }
 
 void seos_reset_to_zero_keys(Seos* seos) {
@@ -307,14 +309,13 @@ Seos* seos_alloc() {
     seos->seos_emulator = seos_emulator_alloc(seos->credential);
 
     seos->active_key_file = furi_string_alloc();
-    seos->key_file_count = 0;
+    seos->keys_version = 0;
+    seos->keys_loaded = false;
 
-    seos->keys_loaded = seos_load_keys_v2(seos, SEOS_KEYS_FILENAME);
-    if(!seos->keys_loaded) {
-        // If version 2 keys failed, try loading version 1
-        seos->keys_loaded = seos_load_keys_v1(seos, SEOS_KEYS_FILENAME);
-    }
-    if(seos->keys_loaded) {
+    // Try loading default keys file (don't reset on failure during init)
+    if(seos_load_keys_v2(seos, SEOS_KEYS_FILENAME) ||
+       seos_load_keys_v1(seos, SEOS_KEYS_FILENAME)) {
+        seos->keys_loaded = true;
         furi_string_set_str(seos->active_key_file, SEOS_KEYS_FILENAME);
     }
 
@@ -432,11 +433,13 @@ int32_t seos_app(void* p) {
     UNUSED(p);
     Seos* seos = seos_alloc();
 
-    if(seos->keys_loaded && seos->keys_version == 1) {
+    if(seos->keys_loaded) {
         scene_manager_next_scene(seos->scene_manager, SeosSceneMainMenu);
-        scene_manager_next_scene(seos->scene_manager, SeosSceneMigrateKeys);
-    } else if(seos->keys_loaded) {
-        scene_manager_next_scene(seos->scene_manager, SeosSceneMainMenu);
+
+        // If v1 keys were loaded, immediately prompt user to migrate to v2 for better security
+        if(seos->keys_version == 1) {
+            scene_manager_next_scene(seos->scene_manager, SeosSceneMigrateKeys);
+        }
     } else {
         scene_manager_next_scene(seos->scene_manager, SeosSceneZeroKeys);
     }
