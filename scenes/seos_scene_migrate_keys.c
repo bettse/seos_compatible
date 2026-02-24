@@ -48,8 +48,7 @@ bool seos_scene_migrate_keys_on_event(void* context, SceneManagerEvent event) {
             consumed = true;
         }
     } else if(event.type == SceneManagerEventTypeBack) {
-        scene_manager_search_and_switch_to_previous_scene(
-            seos->scene_manager, SeosSceneMainMenu);
+        scene_manager_search_and_switch_to_previous_scene(seos->scene_manager, SeosSceneMainMenu);
         consumed = true;
     }
     return consumed;
