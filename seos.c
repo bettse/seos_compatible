@@ -150,7 +150,7 @@ bool seos_load_keys_v2(Seos* seos, const char* filename) {
         FURI_LOG_I(TAG, "Keys loaded V%d", seos->keys_version);
         seos_log_buffer(TAG, "Keys for ADF OID loaded", SEOS_ADF_OID, SEOS_ADF_OID_LEN);
     } else {
-        FURI_LOG_I(TAG, "V2: Parsing failed, using default keys");
+        FURI_LOG_I(TAG, "V2: Parsing failed");
     }
 
     furi_string_free(path);
@@ -194,7 +194,7 @@ bool seos_load_keys_v1(Seos* seos, const char* filename) {
         FURI_LOG_I(TAG, "Keys loaded V%d", seos->keys_version);
         seos_log_buffer(TAG, "Keys for ADF OID loaded", SEOS_ADF_OID, SEOS_ADF_OID_LEN);
     } else {
-        FURI_LOG_I(TAG, "V1: Parsing failed, using default keys");
+        FURI_LOG_I(TAG, "V1: Parsing failed");
     }
 
     furi_string_free(path);
