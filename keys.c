@@ -1,5 +1,6 @@
-#include <stdint.h>
-#include <stddef.h>
+#include "seos_i.h"
+
+#define TAG "SeosKeys"
 
 size_t SEOS_ADF_OID_LEN = 9;
 uint8_t SEOS_ADF_OID[32] = {0x03, 0x01, 0x07, 0x09, 0x00, 0x00, 0x00, 0x00, 0x00};
@@ -11,3 +12,18 @@ uint8_t SEOS_ADF1_READ[] =
     {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 uint8_t SEOS_ADF1_WRITE[] =
     {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+
+void seos_reset_to_zero_keys(Seos* seos) {
+    SEOS_ADF_OID_LEN = 9;
+    memset(SEOS_ADF_OID, 0, sizeof(SEOS_ADF_OID));
+    SEOS_ADF_OID[0] = 0x03;
+    SEOS_ADF_OID[1] = 0x01;
+    SEOS_ADF_OID[2] = 0x07;
+    SEOS_ADF_OID[3] = 0x09;
+    memset(SEOS_ADF1_PRIV_ENC, 0, 16);
+    memset(SEOS_ADF1_PRIV_MAC, 0, 16);
+    memset(SEOS_ADF1_READ, 0, 16);
+    memset(SEOS_ADF1_WRITE, 0, 16);
+    seos->keys_version = 0;
+    furi_string_reset(seos->active_key_file);
+}
