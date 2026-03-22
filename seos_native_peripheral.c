@@ -57,6 +57,7 @@ static uint16_t seos_svc_callback(SeosServiceEvent event, void* context) {
                 furi_mutex_release(seos_native_peripheral->mq_mutex);
             }
             if(space < MESSAGE_QUEUE_SIZE / 2) {
+                // Log if queue is more than half full, but still accept messages to avoid clogging the queue
                 FURI_LOG_D(TAG, "Queue message.  %ld remaining", space);
             }
             bytes_available = (space - 1) * sizeof(NativePeripheralMessage);
@@ -477,6 +478,7 @@ int32_t seos_native_peripheral_task(void* context) {
             uint32_t count = furi_message_queue_get_count(seos_native_peripheral->messages);
             if(count > 0) {
                 if(count > MESSAGE_QUEUE_SIZE / 2) {
+                    // Log if queue is more than half full, but still process all messages to avoid clogging the queue
                     FURI_LOG_I(TAG, "Dequeue message [%ld messages]", count);
                 }
 
