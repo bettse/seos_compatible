@@ -203,7 +203,7 @@ void seos_native_peripheral_process_message_cred(
     bit_buffer_append_bytes(seos_native_peripheral->rx_buffer, message.buf + 1, message.len - 1);
 
     // Only parse if end-of-message flag found
-    if((flags & BLE_FLAG_EOM) == BLE_FLAG_EOM) return;
+    if((flags & BLE_FLAG_EOM) != BLE_FLAG_EOM) return;
 
     const uint8_t* apdu = bit_buffer_get_data(seos_native_peripheral->rx_buffer);
     const size_t apdu_len = bit_buffer_get_size_bytes(seos_native_peripheral->rx_buffer);
@@ -229,6 +229,7 @@ void seos_native_peripheral_process_message_cred(
                seos_native_peripheral->credential,
                response)) {
             view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventADFMatched);
+            bit_buffer_append_bytes(response, (uint8_t*)success, sizeof(success));
         } else {
             FURI_LOG_W(TAG, "Failed to match any ADF OID");
         }
@@ -331,7 +332,7 @@ void seos_native_peripheral_process_message_reader(
     bit_buffer_append_bytes(seos_native_peripheral->rx_buffer, message.buf + 1, message.len - 1);
 
     // Only parse if end-of-message flag found
-    if((flags & BLE_FLAG_EOM) == BLE_FLAG_EOM) return;
+    if((flags & BLE_FLAG_EOM) != BLE_FLAG_EOM) return;
 
     BitBuffer* response = bit_buffer_alloc(128); // TODO: MTU
 
