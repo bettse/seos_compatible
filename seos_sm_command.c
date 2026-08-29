@@ -5,6 +5,18 @@
 #define TAG "SeosSmCommand"
 
 const uint8_t SEOS_SM_HEADER[4] = {0x0c, 0xcb, 0x3f, 0xff};
+const uint8_t SEOS_SM_PUT_HEADER[4] = {0x0c, 0xdb, 0x3f, 0xff};
+
+/* Instruction bytes, both odd so the data is BER encoded. */
+#define INS_GET_DATA 0xcb
+#define INS_PUT_DATA 0xdb
+
+bool seos_sm_command_matches(const uint8_t* apdu, size_t apdu_len) {
+    if(apdu_len < 4) return false;
+    if(apdu[0] != SEOS_SM_HEADER[0]) return false;
+    if(apdu[1] != INS_GET_DATA && apdu[1] != INS_PUT_DATA) return false;
+    return apdu[2] == SEOS_SM_HEADER[2] && apdu[3] == SEOS_SM_HEADER[3];
+}
 const uint8_t SEOS_GET_RESPONSE[4] = {0x00, 0xc0, 0x00, 0x00};
 
 /* Status word telling the reader how much of the response is still to come. */
@@ -106,6 +118,33 @@ static bool parse_tag_list(const uint8_t* data, size_t data_len, uint16_t* tag) 
     return true;
 }
 
+/* Stores an object a write command carries.
+ *
+ * The data field is the tag, a length, and that many bytes. The only object
+ * the card holds is the SIO, and it is bounded by the room there is for it,
+ * not by the length the reader claims. */
+static bool store_object(SeosCredential* credential, const uint8_t* data, size_t data_len) {
+    if(data_len < 3) {
+        FURI_LOG_W(TAG, "Write command too short");
+        return false;
+    }
+
+    uint16_t tag = (uint16_t)((data[0] << 8) | data[1]);
+    size_t len = data[2];
+    if(tag != SIO_FILE_TAG || data_len < 3 + len) {
+        FURI_LOG_W(TAG, "Write names tag %04x with %d bytes", tag, len);
+        return false;
+    }
+    if(len > sizeof(credential->sio)) {
+        FURI_LOG_W(TAG, "SIO of %d bytes will not fit", len);
+        return false;
+    }
+
+    memcpy(credential->sio, data + 3, len);
+    credential->sio_len = len;
+    return true;
+}
+
 bool seos_sm_command_handle(
     SecureMessaging* secure_messaging,
     SeosCredential* credential,
@@ -143,6 +182,18 @@ bool seos_sm_command_handle(
         return false;
     }
     seos_log_bitbuffer(TAG, "received(clear)", message);
+
+    if(apdu[1] == INS_PUT_DATA) {
+        bool stored = store_object(
+            credential, bit_buffer_get_data(message), bit_buffer_get_size_bytes(message));
+        if(stored && on_event) {
+            on_event(event_context, SeosSmEventSioWritten);
+        }
+        answer_status(
+            secure_messaging, tx, stored ? SEOS_SW_SUCCESS_VALUE : SEOS_SW_NOT_ENOUGH_ROOM);
+        bit_buffer_free(message);
+        return true;
+    }
 
     uint16_t tag = 0;
     if(!parse_tag_list(bit_buffer_get_data(message), bit_buffer_get_size_bytes(message), &tag)) {

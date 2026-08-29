@@ -57,6 +57,8 @@ static void seos_emulator_sm_event(void* context, SeosSmEvent event) {
     Seos* seos = context;
     if(event == SeosSmEventSioRequested) {
         view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventSIORequested);
+    } else if(event == SeosSmEventSioWritten) {
+        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventPollerSuccess);
     }
 }
 
@@ -216,7 +218,7 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
             uint8_t no_sm[] = {0x69, 0x88};
             bit_buffer_append_bytes(tx_buffer, no_sm, sizeof(no_sm));
         }
-    } else if(memcmp(apdu, SEOS_SM_HEADER, sizeof(SEOS_SM_HEADER)) == 0) {
+    } else if(seos_sm_command_matches(apdu, sizeof(SEOS_SM_HEADER))) {
         if(seos_emulator->secure_messaging) {
             size_t rx_len = bit_buffer_get_size_bytes(seos_emulator->rx_buffer);
             if(!seos_sm_command_handle(

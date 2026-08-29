@@ -13,11 +13,13 @@
 
 typedef struct {
     unsigned sio_requested;
+    unsigned sio_written;
 } EventLog;
 
 static void record_event(void* context, SeosSmEvent event) {
     EventLog* log = context;
     if(event == SeosSmEventSioRequested) log->sio_requested++;
+    if(event == SeosSmEventSioWritten) log->sio_written++;
 }
 
 static AuthParameters command_params(void) {
@@ -73,6 +75,8 @@ static size_t exchange(
         log);
 }
 
+static const uint8_t* exchange_header = SEOS_SM_HEADER;
+
 static size_t exchange_framed(
     SeosCredential* credential,
     const uint8_t* plain_command,
@@ -92,7 +96,7 @@ static size_t exchange_framed(
         reader,
         (uint8_t*)plain_command,
         plain_command_len,
-        (uint8_t*)SEOS_SM_HEADER,
+        (uint8_t*)exchange_header,
         sizeof(SEOS_SM_HEADER),
         wire));
 
@@ -405,6 +409,104 @@ static MunitResult test_new_command_drops_pending(const MunitParameter p[], void
     return MUNIT_OK;
 }
 
+/* A write command stores the object it carries. */
+static MunitResult test_write_stores_sio(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    SeosCredential credential = credential_with_sio(0);
+    EventLog log = {0};
+
+    uint8_t written[24];
+    for(size_t i = 0; i < sizeof(written); i++)
+        written[i] = (uint8_t)(0x40 + i);
+
+    uint8_t command[3 + sizeof(written)];
+    command[0] = 0xff;
+    command[1] = 0x00;
+    command[2] = (uint8_t)sizeof(written);
+    memcpy(command + 3, written, sizeof(written));
+
+    uint8_t recovered[BUFFER_CAPACITY];
+    exchange_header = SEOS_SM_PUT_HEADER;
+    size_t len =
+        exchange(&credential, command, sizeof(command), recovered, sizeof(recovered), &log);
+    exchange_header = SEOS_SM_HEADER;
+
+    munit_assert_size(len, ==, 0);
+    munit_assert_uint16(last_status_word, ==, SEOS_SW_SUCCESS_VALUE);
+    munit_assert_uint(log.sio_written, ==, 1);
+    munit_assert_size(credential.sio_len, ==, sizeof(written));
+    munit_assert_memory_equal(sizeof(written), credential.sio, written);
+    return MUNIT_OK;
+}
+
+/* A write claiming more than there is room for is refused, and leaves what
+ * was already stored alone. */
+static MunitResult test_write_bounds(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    SeosCredential credential = credential_with_sio(4);
+    uint8_t original[4];
+    memcpy(original, credential.sio, sizeof(original));
+    EventLog log = {0};
+
+    /* A length beyond the room there is, with a body to match. */
+    uint8_t command[3 + 200];
+    memset(command, 0xee, sizeof(command));
+    command[0] = 0xff;
+    command[1] = 0x00;
+    command[2] = 200;
+
+    uint8_t recovered[BUFFER_CAPACITY];
+    exchange_header = SEOS_SM_PUT_HEADER;
+    exchange(&credential, command, 3 + 160, recovered, sizeof(recovered), &log);
+    exchange_header = SEOS_SM_HEADER;
+
+    munit_assert_uint16(last_status_word, ==, SEOS_SW_NOT_ENOUGH_ROOM);
+    munit_assert_uint(log.sio_written, ==, 0);
+    munit_assert_size(credential.sio_len, ==, sizeof(original));
+    munit_assert_memory_equal(sizeof(original), credential.sio, original);
+    return MUNIT_OK;
+}
+
+/* A write naming an object the card does not hold is refused. */
+static MunitResult test_write_unknown_tag(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    SeosCredential credential = credential_with_sio(4);
+    EventLog log = {0};
+
+    uint8_t command[] = {0xff, 0x42, 0x02, 0xaa, 0xbb};
+    uint8_t recovered[BUFFER_CAPACITY];
+    exchange_header = SEOS_SM_PUT_HEADER;
+    exchange(&credential, command, sizeof(command), recovered, sizeof(recovered), &log);
+    exchange_header = SEOS_SM_HEADER;
+
+    munit_assert_uint16(last_status_word, ==, SEOS_SW_NOT_ENOUGH_ROOM);
+    munit_assert_uint(log.sio_written, ==, 0);
+    munit_assert_size(credential.sio_len, ==, 4);
+    return MUNIT_OK;
+}
+
+/* Only these two instructions, on this file, are ours to answer. */
+static MunitResult test_matches_only_our_commands(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    uint8_t get_data[] = {0x0c, 0xcb, 0x3f, 0xff};
+    uint8_t put_data[] = {0x0c, 0xdb, 0x3f, 0xff};
+    uint8_t other_ins[] = {0x0c, 0xa4, 0x3f, 0xff};
+    uint8_t other_file[] = {0x0c, 0xcb, 0x00, 0x00};
+    uint8_t plain_cla[] = {0x00, 0xcb, 0x3f, 0xff};
+
+    munit_assert_true(seos_sm_command_matches(get_data, sizeof(get_data)));
+    munit_assert_true(seos_sm_command_matches(put_data, sizeof(put_data)));
+    munit_assert_false(seos_sm_command_matches(other_ins, sizeof(other_ins)));
+    munit_assert_false(seos_sm_command_matches(other_file, sizeof(other_file)));
+    munit_assert_false(seos_sm_command_matches(plain_cla, sizeof(plain_cla)));
+    munit_assert_false(seos_sm_command_matches(get_data, 3));
+    return MUNIT_OK;
+}
+
 static MunitTest test_sm_command_cases[] = {
     {(char*)"/sio/returned", test_returns_sio, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
     {(char*)"/sio/other-tag", test_ignores_other_tags, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
@@ -416,6 +518,10 @@ static MunitTest test_sm_command_cases[] = {
      MUNIT_TEST_OPTION_NONE,
      NULL},
     {(char*)"/sio/multiple-tags", test_multiple_tags, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
+    {(char*)"/write/stores", test_write_stores_sio, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
+    {(char*)"/write/bounds", test_write_bounds, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
+    {(char*)"/write/unknown-tag", test_write_unknown_tag, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
+    {(char*)"/matches", test_matches_only_our_commands, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
     {(char*)"/chaining/large-sio", test_chained_sio, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
     {(char*)"/chaining/many-frames",
      test_chaining_across_many_frames,

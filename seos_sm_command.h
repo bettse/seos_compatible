@@ -10,8 +10,10 @@
  * reports what happened through a callback rather than reaching into the UI.
  */
 
-/* The command header a secure message carries. */
+/* Command headers a secure message carries: reading an object, and writing
+ * one. Both address the current file. */
 extern const uint8_t SEOS_SM_HEADER[4];
+extern const uint8_t SEOS_SM_PUT_HEADER[4];
 
 /* The command asking for the next piece of a chained response. */
 extern const uint8_t SEOS_GET_RESPONSE[4];
@@ -29,6 +31,7 @@ extern const uint8_t SEOS_GET_RESPONSE[4];
 
 typedef enum {
     SeosSmEventSioRequested,
+    SeosSmEventSioWritten,
 } SeosSmEvent;
 
 typedef void (*SeosSmEventCallback)(void* context, SeosSmEvent event);
@@ -59,3 +62,6 @@ void seos_sm_command_get_response(
     SecureMessaging* secure_messaging,
     size_t max_frame_len,
     BitBuffer* tx);
+
+/* Whether an APDU is a command this handler serves. */
+bool seos_sm_command_matches(const uint8_t* apdu, size_t apdu_len);

@@ -175,6 +175,8 @@ static void seos_native_peripheral_sm_event(void* context, SeosSmEvent event) {
     Seos* seos = context;
     if(event == SeosSmEventSioRequested) {
         view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventSIORequested);
+    } else if(event == SeosSmEventSioWritten) {
+        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventPollerSuccess);
     }
 }
 
@@ -264,7 +266,7 @@ void seos_native_peripheral_process_message_cred(
             uint8_t no_sm[] = {0x69, 0x88};
             bit_buffer_append_bytes(response, no_sm, sizeof(no_sm));
         }
-    } else if(memcmp(apdu, SEOS_SM_HEADER, sizeof(SEOS_SM_HEADER)) == 0) {
+    } else if(seos_sm_command_matches(apdu, sizeof(SEOS_SM_HEADER))) {
         if(seos_native_peripheral->secure_messaging) {
             if(!seos_sm_command_handle(
                    seos_native_peripheral->secure_messaging,
