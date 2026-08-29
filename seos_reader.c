@@ -146,18 +146,29 @@ bool seos_reader_write_sio(SeosReader* seos_reader) {
     BitBuffer* rx_buffer = seos_reader->rx_buffer;
     Iso14443_4aError error;
 
-    uint8_t apdu_header[] = {0x0c, 0xdb, 0x3f, 0xff};
+    /* Tag, length, value. A length of 128 or more takes the long form. */
+    size_t sio_len = seos_reader->credential->sio_len;
+    uint8_t message[4 + sizeof(seos_reader->credential->sio)];
+    size_t message_len = 0;
+    message[message_len++] = 0xff;
+    message[message_len++] = 0x00;
+    if(sio_len < 0x80) {
+        message[message_len++] = (uint8_t)sio_len;
+    } else {
+        message[message_len++] = 0x81;
+        message[message_len++] = (uint8_t)sio_len;
+    }
+    memcpy(message + message_len, seos_reader->credential->sio, sio_len);
+    message_len += sio_len;
 
-    uint8_t message_prefix[] = {0xff, 0x00, seos_reader->credential->sio_len};
-    uint8_t message[sizeof(message_prefix) + seos_reader->credential->sio_len];
-    memcpy(message, message_prefix, sizeof(message_prefix));
-    memcpy(
-        message + sizeof(message_prefix),
-        seos_reader->credential->sio,
-        seos_reader->credential->sio_len);
-    seos_log_buffer(TAG, "NFC transmit(clear)", message, sizeof(message));
+    seos_log_buffer(TAG, "NFC transmit(clear)", message, message_len);
     secure_messaging_wrap_apdu(
-        secure_messaging, message, sizeof(message), apdu_header, sizeof(apdu_header), tx_buffer);
+        secure_messaging,
+        message,
+        message_len,
+        (uint8_t*)SEOS_SM_PUT_HEADER,
+        sizeof(SEOS_SM_PUT_HEADER),
+        tx_buffer);
 
     seos_log_bitbuffer(TAG, "NFC transmit(wrapped)", tx_buffer);
     error = iso14443_4a_poller_send_block(iso14443_4a_poller, tx_buffer, rx_buffer);
