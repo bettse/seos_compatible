@@ -33,7 +33,8 @@ HOST_TEST_SOURCES := \
 	$(HOST_TESTS)/test_protocol.c \
 	$(HOST_TESTS)/test_sm_command.c \
 	$(HOST_TESTS)/test_ble_policy.c \
-	$(HOST_TESTS)/test_ble_framing.c
+	$(HOST_TESTS)/test_ble_framing.c \
+	$(HOST_TESTS)/test_session_vectors.c
 
 HOST_TEST_APP_SOURCES := \
 	cmac.c \

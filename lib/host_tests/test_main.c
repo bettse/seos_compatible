@@ -7,6 +7,7 @@ extern MunitSuite test_protocol_suite;
 extern MunitSuite test_sm_command_suite;
 extern MunitSuite test_ble_policy_suite;
 extern MunitSuite test_ble_framing_suite;
+extern MunitSuite test_session_vectors_suite;
 
 int main(int argc, char* argv[]) {
     MunitSuite child_suites[] = {
@@ -21,6 +22,11 @@ int main(int argc, char* argv[]) {
         {(char*)"/sm-command", test_sm_command_suite.tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
         {(char*)"/ble-policy", test_ble_policy_suite.tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
         {(char*)"/ble-framing", test_ble_framing_suite.tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
+        {(char*)"/session-vectors",
+         test_session_vectors_suite.tests,
+         NULL,
+         1,
+         MUNIT_SUITE_OPTION_NONE},
         {NULL, NULL, NULL, 0, MUNIT_SUITE_OPTION_NONE},
     };
     MunitSuite main_suite = {
