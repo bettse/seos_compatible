@@ -57,6 +57,19 @@ bool seos_scene_ble_peripheral_on_event(void* context, SceneManagerEvent event) 
         } else if(event.event == SeosCustomEventSIORequested) {
             popup_set_header(popup, "SIO\nRequested", 68, 30, AlignLeft, AlignTop);
             consumed = true;
+        } else if(event.event == SeosCustomEventSIOWritten) {
+            /* A reader stored a credential on us. Put it back where this one
+             * came from, so the change survives leaving the screen. */
+            bool saved = seos_credential_save_to_load_path(seos->credential);
+            popup_set_header(
+                popup,
+                saved ? "SIO\nWritten" : "SIO\nWritten\n(unsaved)",
+                68,
+                30,
+                AlignLeft,
+                AlignTop);
+            notification_message(seos->notifications, &sequence_success);
+            consumed = true;
         }
     } else if(event.type == SceneManagerEventTypeBack) {
         if(seos->credential->sio_len > 0) {

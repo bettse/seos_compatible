@@ -1,6 +1,7 @@
 #include "seos_sm_command.h"
 
 #include "seos_tlv.h"
+#include "seos_custom_event.h"
 
 #include "seos_protocol.h"
 
@@ -289,4 +290,14 @@ bool seos_sm_command_handle(
     bit_buffer_free(sio_file);
     bit_buffer_free(message);
     return true;
+}
+
+uint32_t seos_sm_event_to_custom_event(SeosSmEvent event) {
+    switch(event) {
+    case SeosSmEventSioRequested:
+        return SeosCustomEventSIORequested;
+    case SeosSmEventSioWritten:
+        return SeosCustomEventSIOWritten;
+    }
+    return 0;
 }

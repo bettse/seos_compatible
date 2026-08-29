@@ -44,26 +44,12 @@ void seos_credential_free(SeosCredential* seos_credential) {
     free(seos_credential);
 }
 
-bool seos_credential_save(SeosCredential* seos_credential, const char* dev_name) {
+static bool credential_write_file(SeosCredential* seos_credential, const char* path) {
     bool saved = false;
     FlipperFormat* file = flipper_format_file_alloc(seos_credential->storage);
-    FuriString* temp_str = furi_string_alloc();
-    bool use_load_path = true;
 
     do {
-        if(use_load_path && !furi_string_empty(seos_credential->load_path)) {
-            // Get directory name
-            path_extract_dirname(furi_string_get_cstr(seos_credential->load_path), temp_str);
-            // Make path to file to save
-            furi_string_cat_printf(temp_str, "/%s%s", dev_name, SEOS_APP_EXTENSION);
-        } else {
-            // First remove file if it was saved
-            furi_string_printf(
-                temp_str, "%s/%s%s", STORAGE_APP_DATA_PATH_PREFIX, dev_name, SEOS_APP_EXTENSION);
-        }
-
-        // Open file
-        if(!flipper_format_file_open_always(file, furi_string_get_cstr(temp_str))) break;
+        if(!flipper_format_file_open_always(file, path)) break;
 
         // Write header
         if(!flipper_format_write_header_cstr(file, seos_file_header, seos_file_version)) break;
@@ -105,9 +91,36 @@ bool seos_credential_save(SeosCredential* seos_credential, const char* dev_name)
     if(!saved) {
         dialog_message_show_storage_error(seos_credential->dialogs, "Can not save\nfile");
     }
-    furi_string_free(temp_str);
     flipper_format_free(file);
     return saved;
+}
+
+bool seos_credential_save(SeosCredential* seos_credential, const char* dev_name) {
+    FuriString* path = furi_string_alloc();
+
+    if(!furi_string_empty(seos_credential->load_path)) {
+        path_extract_dirname(furi_string_get_cstr(seos_credential->load_path), path);
+        furi_string_cat_printf(path, "/%s%s", dev_name, SEOS_APP_EXTENSION);
+    } else {
+        furi_string_printf(
+            path, "%s/%s%s", STORAGE_APP_DATA_PATH_PREFIX, dev_name, SEOS_APP_EXTENSION);
+    }
+
+    bool saved = credential_write_file(seos_credential, furi_string_get_cstr(path));
+    furi_string_free(path);
+    return saved;
+}
+
+bool seos_credential_save_to_load_path(SeosCredential* seos_credential) {
+    /* A credential that was never loaded from a file has no path of its own.
+     * Leave it alone rather than inventing a name for it. */
+    if(furi_string_empty(seos_credential->load_path)) {
+        FURI_LOG_I(TAG, "Credential has no file to update");
+        return false;
+    }
+
+    return credential_write_file(
+        seos_credential, furi_string_get_cstr(seos_credential->load_path));
 }
 
 static bool

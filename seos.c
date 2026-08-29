@@ -6,10 +6,9 @@
 
 void seos_sm_event_to_view_dispatcher(void* context, SeosSmEvent event) {
     Seos* seos = context;
-    if(event == SeosSmEventSioRequested) {
-        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventSIORequested);
-    } else if(event == SeosSmEventSioWritten) {
-        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventPollerSuccess);
+    uint32_t custom_event = seos_sm_event_to_custom_event(event);
+    if(custom_event != 0) {
+        view_dispatcher_send_custom_event(seos->view_dispatcher, custom_event);
     }
 }
 

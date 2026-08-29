@@ -31,31 +31,10 @@
 #include "seos_protocol.h"
 #include "scenes/seos_scene.h"
 #include "cmac.h"
+#include "seos_custom_event.h"
 
 #define SEOS_TEXT_STORE_SIZE 128
 
-enum SeosCustomEvent {
-    // Reserve first 100 events for button types and indexes, starting from 0
-    SeosCustomEventReserved = 100,
-
-    SeosCustomEventViewExit,
-    SeosCustomEventTextInputDone,
-    // Read/write card events
-    SeosCustomEventPollerError,
-    SeosCustomEventPollerSuccess,
-
-    SeosCustomEventHCIInit,
-    // Events during emulating or reading
-    SeosCustomEventScan,
-    SeosCustomEventFound,
-    SeosCustomEventEmulate,
-    SeosCustomEventADFMatched,
-    SeosCustomEventAIDSelected,
-    SeosCustomEventConnected,
-    SeosCustomEventAuthenticated,
-    SeosCustomEventSIORequested,
-    SeosCustomEventAdvertising,
-};
 
 struct Seos {
     bool is_debug_enabled;

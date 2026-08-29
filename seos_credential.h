@@ -45,6 +45,11 @@ SeosCredential* seos_credential_alloc();
 void seos_credential_free(SeosCredential* seos_credential);
 
 bool seos_credential_save(SeosCredential* seos_credential, const char* dev_name);
+
+/* Writes the credential back to the file it was loaded from.
+ *
+ * False if it was not loaded from a file, in which case nothing is written. */
+bool seos_credential_save_to_load_path(SeosCredential* seos_credential);
 bool seos_credential_clear(SeosCredential* seos_credential);
 bool seos_credential_file_select(SeosCredential* seos_credential);
 void seos_credential_set_loading_callback(

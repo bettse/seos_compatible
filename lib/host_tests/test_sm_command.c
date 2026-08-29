@@ -8,6 +8,7 @@
 
 #include <seos_protocol.h>
 #include <seos_sm_command.h>
+#include <seos_custom_event.h>
 
 #define BUFFER_CAPACITY 512
 
@@ -635,7 +636,32 @@ static MunitResult test_exchange_steps(const MunitParameter p[], void* d) {
     return MUNIT_OK;
 }
 
+
+/* A write and a read are opposite directions and must not share a view event.
+ * They did, and the emulation scenes answer the read event by offering to save
+ * over the file the credential was loaded from. */
+static MunitResult test_write_and_read_events_differ(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    uint32_t requested = seos_sm_event_to_custom_event(SeosSmEventSioRequested);
+    uint32_t written = seos_sm_event_to_custom_event(SeosSmEventSioWritten);
+
+    munit_assert_uint32(requested, ==, SeosCustomEventSIORequested);
+    munit_assert_uint32(written, ==, SeosCustomEventSIOWritten);
+    munit_assert_uint32(written, !=, requested);
+    /* Nor the event a card read raises. */
+    munit_assert_uint32(written, !=, SeosCustomEventPollerSuccess);
+
+    return MUNIT_OK;
+}
+
 static MunitTest test_sm_command_cases[] = {
+    {(char*)"/events/write-differs-from-read",
+     test_write_and_read_events_differ,
+     NULL,
+     NULL,
+     MUNIT_TEST_OPTION_NONE,
+     NULL},
     {(char*)"/sio/returned", test_returns_sio, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
     {(char*)"/sio/other-tag", test_ignores_other_tags, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
     {(char*)"/sio/short-plaintext", test_short_plaintext, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
