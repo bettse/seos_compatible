@@ -20,12 +20,23 @@ typedef struct {
 } BleExtContext;
 
 static void* ble_ext_alloc(Seos* seos) {
+    /* The dongle is powered from the OTG rail, and only while it is in use. */
+    furi_hal_power_enable_otg();
+
+    /* Nothing here can work without the serial port. Another app or the
+     * expansion service may hold it, in which case say so now rather than
+     * asserting deep inside the worker thread. */
+    FuriHalSerialHandle* handle = furi_hal_serial_control_acquire(FuriHalSerialIdLpuart);
+    if(!handle) {
+        FURI_LOG_W("BleExt", "Serial port is not available");
+        furi_hal_power_disable_otg();
+        return NULL;
+    }
+    furi_hal_serial_control_release(handle);
+
     BleExtContext* context = malloc(sizeof(BleExtContext));
     memset(context, 0, sizeof(BleExtContext));
     context->seos = seos;
-
-    /* The dongle is powered from the OTG rail, and only while it is in use. */
-    furi_hal_power_enable_otg();
     return context;
 }
 

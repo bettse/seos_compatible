@@ -36,22 +36,15 @@ void seos_scene_main_menu_on_enter(void* context) {
         SubmenuIndexBLEReader,
         seos_scene_main_menu_submenu_callback,
         seos);
-    if(seos->has_external_ble) {
-        submenu_add_item(
-            submenu,
-            "Scanners >",
-            SubmenuIndexScannerMenu,
-            seos_scene_main_menu_submenu_callback,
-            seos);
-        /*
-        submenu_add_item(
-            submenu,
-            "BLE Cred Interrogate",
-            SubmenuIndexBLECredInterrogate,
-            seos_scene_main_menu_submenu_callback,
-            seos);
-            */
-    }
+    /* The dongle scanners are offered whether or not one is attached: whether
+     * it answers is only known once the stack is loaded, and the scene says so
+     * if it does not. Hiding this left the whole path unreachable. */
+    submenu_add_item(
+        submenu,
+        "Scanners >",
+        SubmenuIndexScannerMenu,
+        seos_scene_main_menu_submenu_callback,
+        seos);
     /*
     submenu_add_item(
         submenu, "Inspect", SubmenuIndexInspect, seos_scene_main_menu_submenu_callback, seos);

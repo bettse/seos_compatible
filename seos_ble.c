@@ -69,6 +69,15 @@ bool seos_ble_acquire(Seos* seos, SeosBleStack stack) {
     return true;
 }
 
+bool seos_ble_acquire_peripheral(Seos* seos) {
+    if(seos_ble_acquire(seos, SeosBleStackExternal)) {
+        seos->has_external_ble = true;
+        return true;
+    }
+    seos->has_external_ble = false;
+    return seos_ble_acquire(seos, SeosBleStackNative);
+}
+
 void seos_ble_start(Seos* seos, FlowMode mode) {
     if(!seos->ble_plugin || !seos->ble_context) return;
     seos->ble_plugin->start(seos->ble_context, mode);

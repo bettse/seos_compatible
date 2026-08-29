@@ -12,6 +12,13 @@
 /* Loads the stack for `stack`, or returns false if it is not there. */
 bool seos_ble_acquire(Seos* seos, SeosBleStack stack);
 
+/* Loads a stack able to act as a peripheral.
+ *
+ * The dongle is preferred when it is present, since it is the one the user
+ * went to the trouble of attaching; the Flipper's own radio is the fallback.
+ * Records which was taken in has_external_ble. */
+bool seos_ble_acquire_peripheral(Seos* seos);
+
 /* Starts the loaded stack in `mode`. Does nothing if none is loaded. */
 void seos_ble_start(Seos* seos, FlowMode mode);
 

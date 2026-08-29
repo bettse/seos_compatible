@@ -18,8 +18,7 @@ void seos_scene_ble_peripheral_on_enter(void* context) {
         popup_set_icon(popup, 0, 3, &I_RFIDDolphinSend_97x61);
     }
 
-    SeosBleStack stack = seos->has_external_ble ? SeosBleStackExternal : SeosBleStackNative;
-    if(seos_ble_acquire(seos, stack)) {
+    if(seos_ble_acquire_peripheral(seos)) {
         seos_ble_start(seos, seos->flow_mode);
     } else {
         popup_set_header(popup, "No BLE\nsupport", 68, 30, AlignLeft, AlignTop);
