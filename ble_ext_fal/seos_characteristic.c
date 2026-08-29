@@ -189,11 +189,21 @@ void seos_characteristic_reader_flow(
             bit_buffer_free(rx_buffer);
             return;
         }
-        memcpy(
-            seos_characteristic->credential->sio,
-            bit_buffer_get_data(rx_buffer) + 3,
-            seos_characteristic->credential->sio_len);
-        FURI_LOG_I(TAG, "SIO Captured, %d bytes", seos_characteristic->credential->sio_len);
+        SeosCredential* credential = seos_characteristic->credential;
+        AuthParameters* params = &seos_characteristic->params;
+
+        memcpy(credential->sio, bit_buffer_get_data(rx_buffer) + 3, credential->sio_len);
+
+        /* The keys the session was built from, and the OID it was selected
+         * by, are what let the credential be emulated later. The NFC reader
+         * and the native BLE reader both keep them; this one did not, so a
+         * credential read over the dongle saved with none of it. */
+        memcpy(credential->priv_key, params->priv_key, sizeof(credential->priv_key));
+        memcpy(credential->auth_key, params->auth_key, sizeof(credential->auth_key));
+        credential->adf_oid_len = SEOS_ADF_OID_LEN;
+        memcpy(credential->adf_oid, SEOS_ADF_OID, sizeof(credential->adf_oid));
+
+        FURI_LOG_I(TAG, "SIO Captured, %d bytes", credential->sio_len);
 
         Seos* seos = seos_characteristic->seos;
         view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventPollerSuccess);
