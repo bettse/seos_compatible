@@ -11,7 +11,7 @@ MUNIT      := $(HOST_TESTS)/vendor/munit
 
 MBEDTLS_PREFIX := $(firstword $(wildcard /opt/homebrew/opt/mbedtls@3 /usr/local/opt/mbedtls@3))
 
-HOST_TEST_CFLAGS := -std=c11 -Wall -Wextra -Werror -g -I. -I$(HOST_TESTS) -I$(MUNIT)
+HOST_TEST_CFLAGS := -std=c11 -Wall -Wextra -Werror -g -I. -I$(HOST_TESTS) -I$(MUNIT) -Ible_shared
 HOST_TEST_LDFLAGS := -lmbedcrypto
 ifneq ($(MBEDTLS_PREFIX),)
 HOST_TEST_CFLAGS  += -I$(MBEDTLS_PREFIX)/include
@@ -32,7 +32,8 @@ HOST_TEST_SOURCES := \
 	$(HOST_TESTS)/test_secure_messaging.c \
 	$(HOST_TESTS)/test_protocol.c \
 	$(HOST_TESTS)/test_sm_command.c \
-	$(HOST_TESTS)/test_ble_policy.c
+	$(HOST_TESTS)/test_ble_policy.c \
+	$(HOST_TESTS)/test_ble_framing.c
 
 HOST_TEST_APP_SOURCES := \
 	cmac.c \
@@ -41,6 +42,7 @@ HOST_TEST_APP_SOURCES := \
 	seos_protocol.c \
 	seos_sm_command.c \
 	seos_ble_policy.c \
+	ble_shared/seos_ble_framing.c \
 	memmem.c
 
 .PHONY: test-host clean-host

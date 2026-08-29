@@ -2,6 +2,7 @@
 
 #include "seos_sm_command.h"
 #include "../seos_sm_event_ui.h"
+#include "../ble_shared/seos_ble_framing.h"
 #include "seos_common.h"
 
 #define TAG "SeosCentral"
@@ -55,32 +56,24 @@ void seos_central_stop(SeosCentral* seos_central) {
     seos_att_stop(seos_central->seos_att);
 }
 
+/* One chunk onto the dongle's ATT link. */
+static bool seos_central_send_chunk(void* context, const uint8_t* chunk, size_t chunk_len) {
+    SeosCentral* seos_central = context;
+    BitBuffer* tx = bit_buffer_alloc(chunk_len);
+    bit_buffer_append_bytes(tx, chunk, chunk_len);
+    seos_att_write_request(seos_central->seos_att, tx);
+    bit_buffer_free(tx);
+    return true;
+}
+
 void seos_central_notify(void* context, const uint8_t* buffer, size_t buffer_len) {
     SeosCentral* seos_central = (SeosCentral*)context;
     seos_log_buffer(TAG, "notify", (uint8_t*)buffer, buffer_len);
 
-    uint8_t flags = buffer[0];
-
-    // Check for error flag
-    if((flags & BLE_FLAG_ERR) == BLE_FLAG_ERR) {
-        seos_log_buffer(TAG, "Received error response", (uint8_t*)(buffer + 1), buffer_len - 1);
+    SeosBleFrameResult frame = seos_ble_reassemble(seos_central->rx_buffer, buffer, buffer_len);
+    if(frame != SeosBleFrameComplete) {
         return;
     }
-
-    // Check for start-of-message flag
-    if((flags & BLE_FLAG_SOM) == BLE_FLAG_SOM) {
-        bit_buffer_reset(seos_central->rx_buffer);
-    } else {
-        if(bit_buffer_get_size_bytes(seos_central->rx_buffer) == 0) {
-            FURI_LOG_W(TAG, "Expected start of BLE packet");
-            return;
-        }
-    }
-
-    bit_buffer_append_bytes(seos_central->rx_buffer, buffer + 1, buffer_len - 1);
-
-    // Only parse if end-of-message flag found
-    if((flags & BLE_FLAG_EOM) != BLE_FLAG_EOM) return;
 
     BitBuffer* response = bit_buffer_alloc(128);
 
@@ -159,33 +152,11 @@ void seos_central_notify(void* context, const uint8_t* buffer, size_t buffer_len
     }
 
     if(bit_buffer_get_size_bytes(response) > 0) {
-        BitBuffer* tx = bit_buffer_alloc(1 + BLE_CHUNK_SIZE);
-
-        const uint8_t* data = bit_buffer_get_data(response);
-        const uint16_t size = bit_buffer_get_size_bytes(response);
-
-        uint16_t num_chunks = size / BLE_CHUNK_SIZE;
-        if(size % BLE_CHUNK_SIZE) num_chunks++;
-
-        for(uint16_t i = 0; i < num_chunks; i++) {
-            uint8_t flags = 0;
-            if(i == 0) flags |= BLE_FLAG_SOM;
-            if(i == num_chunks - 1) flags |= BLE_FLAG_EOM;
-            // Add number of remaining chunks to lower nybble
-            flags |= (num_chunks - 1 - i) & 0x0F;
-
-            // Find number of bytes left to send
-            uint8_t chunk_size = size - (i * BLE_CHUNK_SIZE);
-            // Limit to maximum chunk size
-            chunk_size = chunk_size > BLE_CHUNK_SIZE ? BLE_CHUNK_SIZE : chunk_size;
-
-            // Combine and send
-            bit_buffer_reset(tx);
-            bit_buffer_append_byte(tx, flags);
-            bit_buffer_append_bytes(tx, &data[i * BLE_CHUNK_SIZE], chunk_size);
-            seos_att_write_request(seos_central->seos_att, tx);
-        }
-        bit_buffer_free(tx);
+        seos_ble_chunk(
+            bit_buffer_get_data(response),
+            bit_buffer_get_size_bytes(response),
+            seos_central_send_chunk,
+            seos_central);
     }
     bit_buffer_free(response);
 }

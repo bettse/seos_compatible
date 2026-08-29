@@ -2,6 +2,7 @@
 
 #include "seos_sm_command.h"
 #include "../seos_sm_event_ui.h"
+#include "../ble_shared/seos_ble_framing.h"
 
 #define TAG "SeosNativePeripheral"
 
@@ -179,28 +180,12 @@ void seos_native_peripheral_process_message_cred(
     Seos* seos = seos_native_peripheral->seos;
     BitBuffer* response = bit_buffer_alloc(128); // TODO: MTU
 
-    uint8_t flags = message.buf[0];
-
-    // Check for error flag
-    if((flags & BLE_FLAG_ERR) == BLE_FLAG_ERR) {
-        seos_log_buffer(TAG, "Received error response", message.buf + 1, message.len - 1);
+    SeosBleFrameResult frame =
+        seos_ble_reassemble(seos_native_peripheral->rx_buffer, message.buf, message.len);
+    if(frame != SeosBleFrameComplete) {
+        bit_buffer_free(response);
         return;
     }
-
-    // Check for start-of-message flag
-    if((flags & BLE_FLAG_SOM) == BLE_FLAG_SOM) {
-        bit_buffer_reset(seos_native_peripheral->rx_buffer);
-    } else {
-        if(bit_buffer_get_size_bytes(seos_native_peripheral->rx_buffer) == 0) {
-            FURI_LOG_W(TAG, "Expected start of BLE packet");
-            return;
-        }
-    }
-
-    bit_buffer_append_bytes(seos_native_peripheral->rx_buffer, message.buf + 1, message.len - 1);
-
-    // Only parse if end-of-message flag found
-    if((flags & BLE_FLAG_EOM) != BLE_FLAG_EOM) return;
 
     const uint8_t* apdu = bit_buffer_get_data(seos_native_peripheral->rx_buffer);
     const size_t apdu_len = bit_buffer_get_size_bytes(seos_native_peripheral->rx_buffer);
@@ -294,28 +279,11 @@ void seos_native_peripheral_process_message_cred(
 void seos_native_peripheral_process_message_reader(
     SeosNativePeripheral* seos_native_peripheral,
     NativePeripheralMessage message) {
-    uint8_t flags = message.buf[0];
-
-    // Check for error flag
-    if((flags & BLE_FLAG_ERR) == BLE_FLAG_ERR) {
-        seos_log_buffer(TAG, "Received error response", message.buf + 1, message.len - 1);
+    SeosBleFrameResult frame =
+        seos_ble_reassemble(seos_native_peripheral->rx_buffer, message.buf, message.len);
+    if(frame != SeosBleFrameComplete) {
         return;
     }
-
-    // Check for start-of-message flag
-    if((flags & BLE_FLAG_SOM) == BLE_FLAG_SOM) {
-        bit_buffer_reset(seos_native_peripheral->rx_buffer);
-    } else {
-        if(bit_buffer_get_size_bytes(seos_native_peripheral->rx_buffer) == 0) {
-            FURI_LOG_W(TAG, "Expected start of BLE packet");
-            return;
-        }
-    }
-
-    bit_buffer_append_bytes(seos_native_peripheral->rx_buffer, message.buf + 1, message.len - 1);
-
-    // Only parse if end-of-message flag found
-    if((flags & BLE_FLAG_EOM) != BLE_FLAG_EOM) return;
 
     BitBuffer* response = bit_buffer_alloc(128); // TODO: MTU
 

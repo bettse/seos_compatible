@@ -18,7 +18,7 @@ App(
     fap_libs=["mbedtls"],
     # lib/ holds the host test suite. The two *_fal directories are built as
     # plugins below, so they must not also go into the app.
-    sources=["*.c*", "!lib", "!ble_ext_fal", "!ble_native_fal"],
+    sources=["*.c*", "!lib", "!ble_ext_fal", "!ble_native_fal", "!ble_shared"],
 )
 
 # The BLE stacks are most of the image and most sessions never use one, so
@@ -28,7 +28,7 @@ App(
     apptype=FlipperAppType.PLUGIN,
     entry_point="plugin_ble_ext_ep",
     requires=["seos"],
-    sources=["ble_ext_fal/*.c"],
+    sources=["ble_ext_fal/*.c", "ble_shared/*.c"],
     fal_embedded=True,
 )
 
@@ -37,6 +37,6 @@ App(
     apptype=FlipperAppType.PLUGIN,
     entry_point="plugin_ble_native_ep",
     requires=["seos"],
-    sources=["ble_native_fal/*.c"],
+    sources=["ble_native_fal/*.c", "ble_shared/*.c"],
     fal_embedded=True,
 )
