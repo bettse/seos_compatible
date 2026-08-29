@@ -25,7 +25,6 @@ Seos* seos_alloc() {
     memset(seos, 0, sizeof(Seos));
 
     seos->has_external_ble = false;
-    furi_hal_power_enable_otg();
 
     seos->view_dispatcher = view_dispatcher_alloc();
     seos->scene_manager = scene_manager_alloc(&seos_scene_handlers, seos);
@@ -88,8 +87,6 @@ Seos* seos_alloc() {
 
 void seos_free(Seos* seos) {
     furi_assert(seos);
-
-    furi_hal_power_disable_otg();
 
     nfc_free(seos->nfc);
 

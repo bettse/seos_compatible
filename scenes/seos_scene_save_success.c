@@ -1,5 +1,6 @@
 #include "../seos_i.h"
 #include <dolphin/dolphin.h>
+#include <seos_icons.h>
 
 void seos_scene_save_success_popup_callback(void* context) {
     Seos* seos = context;

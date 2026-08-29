@@ -6,6 +6,10 @@
 #include "seos_credential.h"
 #include "secure_messaging.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* The Seos exchange itself: selecting an application, agreeing a session key,
  * and the cryptograms on either side of it.
  *
@@ -54,3 +58,7 @@ void seos_reader_generate_cryptogram(
     uint8_t* cryptogram);
 
 bool seos_reader_verify_cryptogram(AuthParameters* params, const uint8_t* cryptogram);
+
+#ifdef __cplusplus
+}
+#endif

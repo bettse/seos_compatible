@@ -1,5 +1,8 @@
 #pragma once
 
+#include "../seos_credential.h"
+#include "../secure_messaging.h"
+
 #include <bt/bt_service/bt.h>
 #include "seos_common.h"
 #include "seos_profile.h"

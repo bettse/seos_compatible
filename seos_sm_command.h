@@ -3,6 +3,10 @@
 #include "seos_credential.h"
 #include "secure_messaging.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* Handling for commands that arrive inside a secure messaging session.
  *
  * Every transport carried its own copy of this, so a fix had to be made four
@@ -65,3 +69,7 @@ void seos_sm_command_get_response(
 
 /* Whether an APDU is a command this handler serves. */
 bool seos_sm_command_matches(const uint8_t* apdu, size_t apdu_len);
+
+#ifdef __cplusplus
+}
+#endif

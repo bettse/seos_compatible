@@ -12,6 +12,10 @@
 #include "aes_cmac.h"
 #include "des_cmac.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* Largest plaintext a single cryptogram carries. A full SIO plus the file id
  * and length ahead of it needs more than the file itself. */
 #define SECURE_MESSAGING_MAX_SIZE 192
@@ -104,3 +108,7 @@ bool secure_messaging_wrap_rapdu(
     size_t message_len,
     uint16_t status_word,
     BitBuffer* tx_buffer);
+
+#ifdef __cplusplus
+}
+#endif

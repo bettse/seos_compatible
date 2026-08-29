@@ -1,4 +1,5 @@
 #include "seos_credential_i.h"
+#include <seos_icons.h>
 
 #define SEADER_PATH          "/ext/apps_data/seader"
 #define SEADER_APP_EXTENSION ".credential"

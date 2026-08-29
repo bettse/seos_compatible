@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../seos_ble_plugin.h"
+
 #include <stdint.h>
 #include <stdbool.h>
 #include "seos_common.h"
@@ -14,14 +16,6 @@ extern "C" {
 
 #define BLE_SVC_SEOS_DATA_LEN_MAX       (486)
 #define BLE_SVC_SEOS_CHAR_VALUE_LEN_MAX (243)
-
-// Number of bytes per chunk, after header byte
-// Total length = BLE_CHUNK_SIZE + 1
-#define BLE_CHUNK_SIZE 19
-
-#define BLE_FLAG_SOM 0x80
-#define BLE_FLAG_EOM 0x40
-#define BLE_FLAG_ERR 0x20
 
 typedef enum {
     SeosServiceEventTypeDataReceived,

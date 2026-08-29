@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../seos_ble_plugin.h"
+
 #include <furi.h>
 #include <lib/toolbox/bit_buffer.h>
 

@@ -13,6 +13,10 @@
 #include "aes_cmac.h"
 #include "des_cmac.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define TWO_KEY_3DES_CBC_MODE   2
 #define THREE_KEY_3DES_CBC_MODE 4
 #define SHA1                    6
@@ -107,3 +111,7 @@ bool seos_worker_des_encrypt(
     size_t length,
     const uint8_t* clear,
     uint8_t* encrypted);
+
+#ifdef __cplusplus
+}
+#endif
