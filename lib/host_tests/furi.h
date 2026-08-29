@@ -38,8 +38,15 @@
 #define FURI_LOG_W(tag, ...) ((void)(tag))
 #define FURI_LOG_E(tag, ...) ((void)(tag))
 
-/* Only the type is needed: the protocol code never builds a string. */
+/* Enough of a string for the file parsing to compare a header with. */
 typedef struct FuriString FuriString;
+
+FuriString* furi_string_alloc(void);
+void furi_string_free(FuriString* string);
+void furi_string_set_str(FuriString* string, const char* str);
+const char* furi_string_get_cstr(const FuriString* string);
+int furi_string_cmp_str(const FuriString* string, const char* str);
+bool furi_string_empty(const FuriString* string);
 
 #define furi_assert(expr) assert(expr)
 #define furi_check(expr)  assert(expr)

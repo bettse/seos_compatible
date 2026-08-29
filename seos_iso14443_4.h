@@ -8,24 +8,23 @@
 extern "C" {
 #endif
 
-/* Block framing, as ISO 14443-4 lays it out.
+/* Block framing per ISO 14443-4.
  *
- * A block begins with a protocol control byte. An I-block may carry a node
- * address after it, one byte, flagged in that PCB. The command follows.
+ * A block begins with a protocol control byte. An I-block may carry a one byte
+ * node address after it, flagged in the PCB. The command follows.
  *
- * Kept apart from the listener so the arithmetic can be checked against short
- * and malformed frames without a card in a field.
+ * Separate from the listener so the arithmetic can be tested against short and
+ * malformed frames.
  */
 
 /* The node address bit of a PCB. */
 #define SEOS_ISO14443_4_PCB_NAD 0x08
 
-/* Where the command starts in a received block, and how much of it there is.
+/* Reports where the command starts in a received block and how long it is.
  *
- * False if the frame is too short to carry the header its own PCB describes,
- * or carries a header and nothing after it. Both cases would otherwise run
- * the length backwards past zero, and a count that wrapped would be read as
- * an enormous one. */
+ * False if the frame is shorter than the header its PCB describes, or holds a
+ * header and nothing else. Either case would underflow the remaining
+ * length. */
 bool seos_iso14443_4_apdu_bounds(
     const uint8_t* data,
     size_t len,

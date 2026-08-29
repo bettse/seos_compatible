@@ -1,5 +1,6 @@
 #include "munit.h"
 
+extern MunitSuite test_credential_file_suite;
 extern MunitSuite test_tlv_suite;
 extern MunitSuite test_iso14443_4_suite;
 extern MunitSuite test_cmac_suite;
@@ -17,6 +18,11 @@ extern MunitSuite test_select_adf_suite;
 
 int main(int argc, char* argv[]) {
     MunitSuite child_suites[] = {
+        {(char*)"/credential-file",
+         test_credential_file_suite.tests,
+         NULL,
+         1,
+         MUNIT_SUITE_OPTION_NONE},
         {(char*)"/tlv", test_tlv_suite.tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
         {(char*)"/iso14443-4",
          test_iso14443_4_suite.tests,

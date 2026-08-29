@@ -10,15 +10,14 @@
 extern "C" {
 #endif
 
-/* BER-TLV data objects, encoded as ITU-T X.690 describes.
+/* BER-TLV data objects, encoded per ITU-T X.690.
  *
- * Reading works from a buffer and a length rather than a BitBuffer, so a
- * caller can walk a message header by header without copying, and so the
- * parsing can be tested away from any transport.
+ * Reads take a buffer and a length rather than a BitBuffer, so a caller can
+ * walk a message header by header without copying, and so parsing can be
+ * tested without a transport.
  *
- * Only what this protocol uses is served: tags of one or two octets, and
- * definite lengths of up to two length octets. Anything longer is refused
- * rather than guessed at.
+ * Supports tags of one or two octets and definite lengths of up to two length
+ * octets. Anything else is rejected.
  */
 
 /* Two tag octets, a length form octet, and two length octets. */
@@ -31,9 +30,8 @@ typedef struct {
     uint16_t tag;
     const uint8_t* value;
     size_t value_len;
-    /* Where the object sat in the buffer it was read from. A caller that
-     * works in offsets -- a checksum covering everything ahead of an object,
-     * say -- needs these rather than the pointer. */
+    /* Position in the buffer the object was read from, for callers that work
+     * in offsets rather than pointers. */
     size_t header_offset;
     size_t value_offset;
 } SeosTlvObject;
@@ -49,24 +47,25 @@ void seos_tlv_cursor_init(SeosTlvCursor* cursor, const uint8_t* data, size_t len
 /* Whether the cursor has reached the end of its buffer. */
 bool seos_tlv_cursor_done(const SeosTlvCursor* cursor);
 
-/* Reads the object at the cursor and steps past its value.
+/* Reads the object at the cursor and advances past its value.
  *
- * Returns false, leaving the cursor alone, if the object is malformed or runs
- * past the end of the buffer. */
+ * Returns false and leaves the cursor unchanged if the object is malformed or
+ * extends past the end of the buffer. */
 bool seos_tlv_read(SeosTlvCursor* cursor, SeosTlvObject* out);
 
 /* Reads the object at `offset` without a cursor. */
 bool seos_tlv_read_at(const uint8_t* data, size_t len, size_t offset, SeosTlvObject* out);
 
-/* Reads a bare tag, stepping `offset` past it. A tag list carries tags with
- * no lengths between them, so it needs this rather than a whole object. */
+/* Reads a bare tag and advances `offset` past it. A tag list holds tags with
+ * no lengths between them. */
 bool seos_tlv_read_tag(const uint8_t* data, size_t len, size_t* offset, uint16_t* tag);
 
 /* Octets a length takes in its shortest form. */
 size_t seos_tlv_length_size(size_t value_len);
 
-/* Writes a tag and length into `out`, which needs SEOS_TLV_HEADER_MAX bytes,
- * and returns how much was written. Always the shortest legal form. */
+/* Writes a tag and length into `out` and returns the number of bytes written.
+ * `out` must have room for SEOS_TLV_HEADER_MAX. Uses the shortest legal
+ * form. */
 size_t seos_tlv_write_header(uint8_t* out, uint16_t tag, size_t value_len);
 
 /* Appends a whole object to a buffer. */

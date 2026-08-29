@@ -1,13 +1,11 @@
 #include "seos_credential_i.h"
+#include "seos_credential_parse.h"
 #include <seos_icons.h>
 
 #define SEADER_PATH          "/ext/apps_data/seader"
 #define SEADER_APP_EXTENSION ".credential"
 
 #define TAG "SeosCredential"
-
-static uint8_t empty[16] =
-    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 
 SeosCredential* seos_credential_alloc() {
     SeosCredential* seos_credential = malloc(sizeof(SeosCredential));
@@ -116,103 +114,24 @@ static bool
     seos_credential_file_load(SeosCredential* seos_credential, FuriString* path, bool show_dialog) {
     bool parsed = false;
     FlipperFormat* file = flipper_format_file_alloc(seos_credential->storage);
-    FuriString* temp_str;
-    temp_str = furi_string_alloc();
-    bool deprecated_version = false;
 
     if(seos_credential->loading_cb) {
         seos_credential->loading_cb(seos_credential->loading_cb_ctx, true);
     }
 
-    memset(seos_credential->diversifier, 0, sizeof(seos_credential->diversifier));
-    memset(seos_credential->sio, 0, sizeof(seos_credential->sio));
-    do {
-        if(!flipper_format_file_open_existing(file, furi_string_get_cstr(path))) break;
-
-        // Read and verify file header
-        uint32_t version = 0;
-        if(!flipper_format_read_header(file, temp_str, &version)) break;
-        if(furi_string_cmp_str(temp_str, seos_file_header) || (version != seos_file_version)) {
-            deprecated_version = true;
-            break;
-        }
-
-        /* Each field is read in the order the file lists it: a key is looked
-         * for from the current position onward, so reading one out of turn
-         * steps past the ones before it and they can no longer be found.
-         *
-         * The file states each length, and that decides how much is read into
-         * a field of fixed size, so each is checked before it is used. */
-        uint32_t diversifier_len = 0;
-        if(!flipper_format_read_uint32(file, "Diversifier Length", &diversifier_len, 1)) break;
-        if(diversifier_len > sizeof(seos_credential->diversifier)) {
-            FURI_LOG_W(TAG, "Diversifier of %lu will not fit", diversifier_len);
-            break;
-        }
-        seos_credential->diversifier_len = diversifier_len;
-        if(!flipper_format_read_hex(
-               file, "Diversifier", seos_credential->diversifier, seos_credential->diversifier_len))
-            break;
-
-        uint32_t sio_len = 0;
-        if(!flipper_format_read_uint32(file, "SIO Length", &sio_len, 1)) break;
-        if(sio_len > sizeof(seos_credential->sio)) {
-            FURI_LOG_W(TAG, "Credential of %lu will not fit", sio_len);
-            break;
-        }
-        seos_credential->sio_len = sio_len;
-        if(!flipper_format_read_hex(file, "SIO", seos_credential->sio, seos_credential->sio_len))
-            break;
-
-        // optional
-        memset(seos_credential->priv_key, 0, sizeof(seos_credential->priv_key));
-        memset(seos_credential->auth_key, 0, sizeof(seos_credential->auth_key));
-        memset(seos_credential->adf_response, 0, sizeof(seos_credential->adf_response));
-        flipper_format_read_hex(
-            file, "Priv Key", seos_credential->priv_key, sizeof(seos_credential->priv_key));
-        flipper_format_read_hex(
-            file, "Auth Key", seos_credential->auth_key, sizeof(seos_credential->auth_key));
-        if(memcmp(seos_credential->priv_key, empty, sizeof(empty)) != 0) {
-            FURI_LOG_I(TAG, "+ Priv Key");
-        }
-        if(memcmp(seos_credential->priv_key, empty, sizeof(empty)) != 0) {
-            FURI_LOG_I(TAG, "+ Auth Key");
-        }
-        flipper_format_read_hex(
-            file,
-            "ADF Response",
-            seos_credential->adf_response,
-            sizeof(seos_credential->adf_response));
-
-        uint32_t adf_oid_len = 0;
-        if(flipper_format_read_uint32(file, "ADF OID Length", &adf_oid_len, 1)) {
-            if(adf_oid_len > sizeof(seos_credential->adf_oid)) {
-                FURI_LOG_W(TAG, "Application identifier of %lu will not fit", adf_oid_len);
-                break;
-            }
-            seos_credential->adf_oid_len = adf_oid_len;
-            flipper_format_read_hex(
-                file, "ADF OID", seos_credential->adf_oid, seos_credential->adf_oid_len);
-        }
-
-        parsed = true;
-    } while(false);
+    if(flipper_format_file_open_existing(file, furi_string_get_cstr(path))) {
+        parsed = seos_credential_parse_seos(file, seos_credential);
+    }
 
     if(seos_credential->loading_cb) {
         seos_credential->loading_cb(seos_credential->loading_cb_ctx, false);
     }
 
     if((!parsed) && (show_dialog)) {
-        if(deprecated_version) {
-            dialog_message_show_storage_error(seos_credential->dialogs, "File format deprecated");
-        } else {
-            dialog_message_show_storage_error(seos_credential->dialogs, "Can not parse\nfile");
-        }
+        dialog_message_show_storage_error(seos_credential->dialogs, "Can not parse file");
     }
 
-    furi_string_free(temp_str);
     flipper_format_free(file);
-
     return parsed;
 }
 
@@ -249,72 +168,24 @@ static bool seos_credential_file_load_seader(
     bool show_dialog) {
     bool parsed = false;
     FlipperFormat* file = flipper_format_file_alloc(seos_credential->storage);
-    FuriString* reason = furi_string_alloc_set("Couldn't load file");
-    FuriString* temp_str;
-    temp_str = furi_string_alloc();
-    const char* seader_file_header = "Flipper Seader Credential";
-    const uint32_t seader_file_version = 1;
 
     if(seos_credential->loading_cb) {
         seos_credential->loading_cb(seos_credential->loading_cb_ctx, true);
     }
 
-    memset(seos_credential->diversifier, 0, sizeof(seos_credential->diversifier));
-    memset(seos_credential->sio, 0, sizeof(seos_credential->sio));
-    do {
-        if(!flipper_format_file_open_existing(file, furi_string_get_cstr(path))) break;
-
-        // Read and verify file header
-        uint32_t version = 0;
-        if(!flipper_format_read_header(file, temp_str, &version)) break;
-        if(furi_string_cmp_str(temp_str, seader_file_header) || (version != seader_file_version)) {
-            furi_string_printf(reason, "Deprecated file format");
-            break;
-        }
-        // Don't forget, order of keys is important
-
-        if(!flipper_format_key_exist(file, "SIO")) {
-            furi_string_printf(reason, "Missing SIO");
-            break;
-        }
-        seos_credential->sio_len = 64; // Seader SIO size
-        // We can't check the return status because it will be false if less than the requested length of bytes was read.
-        flipper_format_read_hex(file, "SIO", seos_credential->sio, seos_credential->sio_len);
-        seos_credential->sio_len =
-            seos_credential->sio[1] + 4; // 2 for type and length, 2 for null after SIO data
-
-        // -------------
-        if(!flipper_format_key_exist(file, "Diversifier")) {
-            furi_string_printf(reason, "Missing Diversifier");
-            break;
-        }
-        seos_credential->diversifier_len = 8; //Seader diversifier size
-        flipper_format_read_hex(
-            file, "Diversifier", seos_credential->diversifier, seos_credential->diversifier_len);
-        uint8_t* end = memchr(seos_credential->diversifier, 0, 8);
-        if(end) {
-            seos_credential->diversifier_len = end - seos_credential->diversifier;
-        } // Returns NULL if char cannot be found
-
-        SeosCredential* cred = seos_credential;
-        seos_log_buffer(TAG, "SIO", cred->sio, cred->sio_len);
-        seos_log_buffer(TAG, "Diversifier", cred->diversifier, cred->diversifier_len);
-
-        parsed = true;
-    } while(false);
+    if(flipper_format_file_open_existing(file, furi_string_get_cstr(path))) {
+        parsed = seos_credential_parse_seader(file, seos_credential);
+    }
 
     if(seos_credential->loading_cb) {
         seos_credential->loading_cb(seos_credential->loading_cb_ctx, false);
     }
 
     if((!parsed) && (show_dialog)) {
-        dialog_message_show_storage_error(seos_credential->dialogs, furi_string_get_cstr(reason));
+        dialog_message_show_storage_error(seos_credential->dialogs, "Can not parse file");
     }
 
-    furi_string_free(reason);
-    furi_string_free(temp_str);
     flipper_format_free(file);
-
     return parsed;
 }
 

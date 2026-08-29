@@ -1,14 +1,13 @@
 #include "seos_tlv.h"
 
-/* A tag whose low five bits are all set continues into further octets, and an
- * octet with its top bit clear ends the run. Two octets is as far as this
- * goes. */
+/* A tag whose low five bits are all set continues into further octets; an
+ * octet with its top bit clear ends the run. Two octets maximum. */
 #define TAG_CONTINUES_MASK 0x1f
 #define TAG_MORE_OCTETS    0x80
 
-/* A length octet below 0x80 is the length; 0x80 means indefinite, which needs
- * an end marker this does not use; above that the low bits count the length
- * octets that follow. */
+/* A length octet below 0x80 is the length itself. 0x80 is the indefinite
+ * form, which requires an end-of-contents marker and is not supported. Above
+ * that, the low bits give the number of length octets that follow. */
 #define LENGTH_LONG_FORM   0x80
 #define LENGTH_OCTETS_MASK 0x7f
 
@@ -25,7 +24,7 @@ static bool read_tag(const uint8_t* data, size_t len, size_t offset, uint16_t* t
 
     if(offset + 1 >= len) return false;
     uint8_t second = data[offset + 1];
-    /* A third octet would not fit the tag this reports. */
+    /* A third octet would not fit in the reported tag. */
     if((second & TAG_MORE_OCTETS) != 0) return false;
 
     *tag = (uint16_t)((first << 8) | second);
@@ -33,11 +32,10 @@ static bool read_tag(const uint8_t* data, size_t len, size_t offset, uint16_t* t
     return true;
 }
 
-/* Reads a length at `offset`, reporting where the value starts.
+/* Reads a length at `offset` and reports where the value starts.
  *
- * A length written longer than it needs to be is still read: the encoders on
- * the other end are not all minimal, and refusing them would drop messages
- * that are otherwise well formed. */
+ * Non-minimal lengths are accepted. Not all encoders emit the shortest form,
+ * and rejecting them would drop otherwise valid messages. */
 static bool
     read_length(const uint8_t* data, size_t len, size_t offset, size_t* value_len, size_t* end) {
     if(offset >= len) return false;
@@ -88,8 +86,8 @@ bool seos_tlv_read_at(const uint8_t* data, size_t len, size_t offset, SeosTlvObj
     size_t value_offset = 0;
     if(!read_length(data, len, after_tag, &value_len, &value_offset)) return false;
 
-    /* Added the other way round so a length near the top of the range cannot
-     * wrap the sum past the check. */
+    /* Subtraction rather than addition: value_offset + value_len could wrap
+     * for a length near SIZE_MAX. */
     if(value_len > len - value_offset) return false;
 
     out->tag = tag;
