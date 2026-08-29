@@ -2,7 +2,6 @@
 
 #include "uart_i.h"
 
-int32_t seos_uart_tx_thread(void* context);
 void seos_uart_on_irq_cb(uint8_t data, void* context);
 void seos_uart_serial_init(SeosUart* seos_uart, uint8_t uart_ch);
 void seos_uart_serial_deinit(SeosUart* seos_uart);

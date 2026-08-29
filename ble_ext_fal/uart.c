@@ -99,17 +99,8 @@ int32_t seos_uart_worker(void* context) {
 
     seos_uart->rx_stream = furi_stream_buffer_alloc(SEOS_UART_RX_BUF_SIZE, 1);
 
-    seos_uart->tx_sem = furi_semaphore_alloc(1, 1);
-
-    seos_uart->tx_thread =
-        furi_thread_alloc_ex("SeosUartTxWorker", 1.5 * 1024, seos_uart_tx_thread, seos_uart);
-
     seos_uart_serial_init(seos_uart, seos_uart->cfg.uart_ch);
     seos_uart_set_baudrate(seos_uart, seos_uart->cfg.baudrate);
-
-    furi_thread_flags_set(furi_thread_get_id(seos_uart->tx_thread), WorkerEvtDevRx);
-
-    furi_thread_start(seos_uart->tx_thread);
 
     uint8_t cmd[SEOS_UART_RX_BUF_SIZE];
     size_t cmd_len = 0;
@@ -151,12 +142,7 @@ int32_t seos_uart_worker(void* context) {
     }
     seos_uart_serial_deinit(seos_uart);
 
-    furi_thread_flags_set(furi_thread_get_id(seos_uart->tx_thread), WorkerEvtTxStop);
-    furi_thread_join(seos_uart->tx_thread);
-    furi_thread_free(seos_uart->tx_thread);
-
     furi_stream_buffer_free(seos_uart->rx_stream);
-    furi_semaphore_free(seos_uart->tx_sem);
     return 0;
 }
 
@@ -170,31 +156,6 @@ SeosUart* seos_uart_enable(SeosUartConfig* cfg) {
 
     furi_thread_start(seos_uart->thread);
     return seos_uart;
-}
-
-int32_t seos_uart_tx_thread(void* context) {
-    SeosUart* seos_uart = (SeosUart*)context;
-
-    furi_thread_set_current_priority(FuriThreadPriorityHighest);
-    while(1) {
-        uint32_t events =
-            furi_thread_flags_wait(WORKER_ALL_TX_EVENTS, FuriFlagWaitAny, FuriWaitForever);
-        furi_check(!(events & FuriFlagError));
-        if(events & WorkerEvtTxStop) break;
-        if(events & WorkerEvtDevRx) {
-            if(seos_uart->tx_len > 0) {
-                /*
-                char display[SEOS_UART_RX_BUF_SIZE * 2 + 1] = {0};
-                for(uint8_t i = 0; i < seos_uart->tx_len; i++) {
-                    snprintf(display + (i * 2), sizeof(display), "%02x", seos_uart->tx_buf[i]);
-                }
-                FURI_LOG_D(TAG, "SEND %d bytes: %s", seos_uart->tx_len, display);
-                */
-                furi_hal_serial_tx(seos_uart->serial_handle, seos_uart->tx_buf, seos_uart->tx_len);
-            }
-        }
-    }
-    return 0;
 }
 
 void seos_uart_get_config(SeosUart* seos_uart, SeosUartConfig* cfg) {
@@ -219,10 +180,15 @@ void seos_uart_free(SeosUart* seos_uart) {
 }
 
 void seos_uart_send(SeosUart* seos_uart, uint8_t* buffer, size_t len) {
-    memset(seos_uart->tx_buf, 0, sizeof(seos_uart->tx_buf));
-    memcpy(seos_uart->tx_buf, buffer, len);
-    seos_uart->tx_len = len;
-    furi_thread_flags_set(furi_thread_get_id(seos_uart->tx_thread), WorkerEvtDevRx);
+    /* furi_hal_serial_tx waits on the transfer itself, so there is nothing for
+     * a thread of our own to do. Sending straight from the caller's buffer
+     * also removes the copy that a second thread could read while this one was
+     * still filling it. */
+    if(!seos_uart->serial_handle) {
+        FURI_LOG_W(TAG, "Send before the port was ready");
+        return;
+    }
+    furi_hal_serial_tx(seos_uart->serial_handle, buffer, len);
 }
 
 void seos_uart_set_receive_callback(
