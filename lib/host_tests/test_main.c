@@ -1,11 +1,13 @@
 #include "munit.h"
 
 extern MunitSuite test_cmac_suite;
+extern MunitSuite test_kdf_suite;
 extern MunitSuite test_secure_messaging_suite;
 
 int main(int argc, char* argv[]) {
     MunitSuite child_suites[] = {
         {(char*)"/cmac", test_cmac_suite.tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
+        {(char*)"/kdf", test_kdf_suite.tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
         {(char*)"/secure-messaging",
          test_secure_messaging_suite.tests,
          NULL,

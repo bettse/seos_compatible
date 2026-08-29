@@ -288,7 +288,9 @@ SecureMessaging* secure_messaging_alloc(AuthParameters* params) {
         memcpy(secure_messaging->desContext, params->rndICC, 4);
         memcpy(secure_messaging->desContext + 4, params->UID, 4);
     } else {
-        FURI_LOG_W(TAG, "Cipher not matched");
+        FURI_LOG_W(TAG, "Cipher not matched (%d)", params->cipher);
+        free(secure_messaging);
+        return NULL;
     }
 
     size_t index = 0;
@@ -312,6 +314,12 @@ SecureMessaging* secure_messaging_alloc(AuthParameters* params) {
         unit = 160 / 8;
     } else if(params->hash == SHA256) {
         unit = 256 / 8;
+    } else {
+        /* A hash we do not know leaves the step at zero, which would spin the
+         * derivation loop forever. */
+        FURI_LOG_W(TAG, "Unknown hash algorithm (%d)", params->hash);
+        free(secure_messaging);
+        return NULL;
     }
     // FURI_LOG_D(TAG, "secure_messaging_alloc hash %d unit %d", hash, unit);
 

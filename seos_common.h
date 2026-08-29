@@ -65,6 +65,10 @@ typedef struct {
     uint8_t hash;
 } AuthParameters;
 
+/* Fills a session nonce with random bytes. Freshness of these is what stops a
+ * session being replayed, so they must never be constant. */
+void seos_worker_random_nonce(uint8_t* nonce, size_t len);
+
 void seos_log_bitbuffer(char* TAG, char* prefix, BitBuffer* buffer);
 void seos_log_buffer(char* TAG, char* prefix, uint8_t* buffer, size_t buffer_len);
 

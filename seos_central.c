@@ -25,8 +25,8 @@ SeosCentral* seos_central_alloc(Seos* seos) {
     seos_central->params.cipher = TWO_KEY_3DES_CBC_MODE;
     seos_central->params.hash = SHA1;
 
-    memset(seos_central->params.rndICC, 0x0d, sizeof(seos_central->params.rndICC));
-    memset(seos_central->params.rNonce, 0x0c, sizeof(seos_central->params.rNonce));
+    seos_worker_random_nonce(seos_central->params.rndICC, sizeof(seos_central->params.rndICC));
+    seos_worker_random_nonce(seos_central->params.rNonce, sizeof(seos_central->params.rNonce));
 
     seos_central->secure_messaging = NULL;
 

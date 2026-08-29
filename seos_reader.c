@@ -16,8 +16,8 @@ SeosReader* seos_reader_alloc(SeosCredential* credential, Iso14443_4aPoller* iso
     memset(seos_reader, 0, sizeof(SeosReader));
     seos_reader->params.key_no = 1;
     seos_reader->secure_messaging = NULL;
-    memset(seos_reader->params.cNonce, 0x0c, sizeof(seos_reader->params.cNonce));
-    memset(seos_reader->params.UID, 0x0d, sizeof(seos_reader->params.UID));
+    seos_worker_random_nonce(seos_reader->params.cNonce, sizeof(seos_reader->params.cNonce));
+    seos_worker_random_nonce(seos_reader->params.UID, sizeof(seos_reader->params.UID));
 
     seos_reader->credential = credential;
     seos_reader->iso14443_4a_poller = iso14443_4a_poller;
@@ -495,6 +495,10 @@ NfcCommand seos_reader_general_authenticate_2(SeosReader* seos_reader) {
     }
 
     seos_reader->secure_messaging = secure_messaging_alloc(&seos_reader->params);
+    if(!seos_reader->secure_messaging) {
+        FURI_LOG_W(TAG, "Could not start secure messaging");
+        ret = NfcCommandStop;
+    }
 
     return ret;
 }

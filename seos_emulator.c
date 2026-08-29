@@ -33,8 +33,8 @@ SeosEmulator* seos_emulator_alloc(SeosCredential* credential) {
     seos_emulator->params.cipher = TWO_KEY_3DES_CBC_MODE;
     seos_emulator->params.hash = SHA1;
 
-    memset(seos_emulator->params.rndICC, 0x0d, sizeof(seos_emulator->params.rndICC));
-    memset(seos_emulator->params.rNonce, 0x0c, sizeof(seos_emulator->params.rNonce));
+    seos_worker_random_nonce(seos_emulator->params.rndICC, sizeof(seos_emulator->params.rndICC));
+    seos_worker_random_nonce(seos_emulator->params.rNonce, sizeof(seos_emulator->params.rNonce));
     seos_emulator->credential = credential;
 
     seos_emulator->secure_messaging = NULL;

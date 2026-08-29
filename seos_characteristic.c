@@ -28,8 +28,10 @@ SeosCharacteristic* seos_characteristic_alloc(Seos* seos) {
     seos_characteristic->secure_messaging = NULL;
 
     seos_characteristic->params.key_no = 1;
-    memset(seos_characteristic->params.cNonce, 0x0c, sizeof(seos_characteristic->params.cNonce));
-    memset(seos_characteristic->params.UID, 0x0d, sizeof(seos_characteristic->params.UID));
+    seos_worker_random_nonce(
+        seos_characteristic->params.cNonce, sizeof(seos_characteristic->params.cNonce));
+    seos_worker_random_nonce(
+        seos_characteristic->params.UID, sizeof(seos_characteristic->params.UID));
 
     seos_characteristic->seos_att = seos_att_alloc(seos);
 
@@ -58,10 +60,10 @@ void seos_characteristic_start(SeosCharacteristic* seos_characteristic, FlowMode
         seos_characteristic->params.cipher = TWO_KEY_3DES_CBC_MODE;
         seos_characteristic->params.hash = SHA1;
 
-        memset(
-            seos_characteristic->params.rndICC, 0x0d, sizeof(seos_characteristic->params.rndICC));
-        memset(
-            seos_characteristic->params.rNonce, 0x0c, sizeof(seos_characteristic->params.rNonce));
+        seos_worker_random_nonce(
+            seos_characteristic->params.rndICC, sizeof(seos_characteristic->params.rndICC));
+        seos_worker_random_nonce(
+            seos_characteristic->params.rNonce, sizeof(seos_characteristic->params.rNonce));
         memset(seos_characteristic->params.UID, 0x00, sizeof(seos_characteristic->params.UID));
         memset(
             seos_characteristic->params.cNonce, 0x00, sizeof(seos_characteristic->params.cNonce));
@@ -140,6 +142,10 @@ void seos_characteristic_reader_flow(
 
         seos_characteristic->secure_messaging =
             secure_messaging_alloc(&seos_characteristic->params);
+        if(!seos_characteristic->secure_messaging) {
+            FURI_LOG_W(TAG, "Could not start secure messaging");
+            return;
+        }
 
         SecureMessaging* secure_messaging = seos_characteristic->secure_messaging;
 

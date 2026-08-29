@@ -27,6 +27,7 @@ HOST_TEST_SUPPORT := \
 HOST_TEST_SOURCES := \
 	$(HOST_TESTS)/test_main.c \
 	$(HOST_TESTS)/test_cmac.c \
+	$(HOST_TESTS)/test_kdf.c \
 	$(HOST_TESTS)/test_secure_messaging.c
 
 HOST_TEST_APP_SOURCES := \

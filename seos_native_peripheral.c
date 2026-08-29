@@ -80,11 +80,10 @@ SeosNativePeripheral* seos_native_peripheral_alloc(Seos* seos) {
     seos_native_peripheral->phase = SELECT_AID;
     seos_native_peripheral->secure_messaging = NULL;
     seos_native_peripheral->params.key_no = 1;
-    memset(
-        seos_native_peripheral->params.cNonce,
-        0x0c,
-        sizeof(seos_native_peripheral->params.cNonce));
-    memset(seos_native_peripheral->params.UID, 0x0d, sizeof(seos_native_peripheral->params.UID));
+    seos_worker_random_nonce(
+        seos_native_peripheral->params.cNonce, sizeof(seos_native_peripheral->params.cNonce));
+    seos_worker_random_nonce(
+        seos_native_peripheral->params.UID, sizeof(seos_native_peripheral->params.UID));
 
     seos_native_peripheral->thread = furi_thread_alloc_ex(
         "SeosNativePeripheralWorker",
@@ -121,14 +120,10 @@ void seos_native_peripheral_start(SeosNativePeripheral* seos_native_peripheral, 
         seos_native_peripheral->params.cipher = TWO_KEY_3DES_CBC_MODE;
         seos_native_peripheral->params.hash = SHA1;
 
-        memset(
-            seos_native_peripheral->params.rndICC,
-            0x0d,
-            sizeof(seos_native_peripheral->params.rndICC));
-        memset(
-            seos_native_peripheral->params.rNonce,
-            0x0c,
-            sizeof(seos_native_peripheral->params.rNonce));
+        seos_worker_random_nonce(
+            seos_native_peripheral->params.rndICC, sizeof(seos_native_peripheral->params.rndICC));
+        seos_worker_random_nonce(
+            seos_native_peripheral->params.rNonce, sizeof(seos_native_peripheral->params.rNonce));
         memset(
             seos_native_peripheral->params.UID, 0x00, sizeof(seos_native_peripheral->params.UID));
         memset(
@@ -421,6 +416,11 @@ void seos_native_peripheral_process_message_reader(
 
         seos_native_peripheral->secure_messaging =
             secure_messaging_alloc(&seos_native_peripheral->params);
+        if(!seos_native_peripheral->secure_messaging) {
+            FURI_LOG_W(TAG, "Could not start secure messaging");
+            bit_buffer_free(response);
+            return;
+        }
 
         SecureMessaging* secure_messaging = seos_native_peripheral->secure_messaging;
 

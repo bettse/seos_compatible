@@ -3,6 +3,10 @@
 char* seos_file_header = "Flipper Seos Credential";
 uint32_t seos_file_version = 1;
 
+void seos_worker_random_nonce(uint8_t* nonce, size_t len) {
+    furi_hal_random_fill_buf(nonce, len);
+}
+
 void seos_log_buffer(char* TAG, char* prefix, uint8_t* buffer, size_t buffer_len) {
     char display[SEOS_WORKER_MAX_BUFFER_SIZE * 2 + 1];
 
