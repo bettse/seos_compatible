@@ -16,4 +16,6 @@ App(
     fap_icon_assets="images",  # Image assets to compile for this application
     fap_file_assets="files",
     fap_libs=["mbedtls"],
+    # lib/ holds the host test suite, which is not part of the firmware build.
+    sources=["*.c*", "!lib"],
 )
