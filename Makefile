@@ -28,6 +28,7 @@ HOST_TEST_SUPPORT := \
 HOST_TEST_SOURCES := \
 	$(HOST_TESTS)/test_main.c \
 	$(HOST_TESTS)/test_tlv.c \
+	$(HOST_TESTS)/test_iso14443_4.c \
 	$(HOST_TESTS)/test_cmac.c \
 	$(HOST_TESTS)/test_kdf.c \
 	$(HOST_TESTS)/test_secure_messaging.c \
@@ -42,6 +43,7 @@ HOST_TEST_SOURCES := \
 
 HOST_TEST_APP_SOURCES := \
 	seos_tlv.c \
+	seos_iso14443_4.c \
 	cmac.c \
 	seos_common.c \
 	secure_messaging.c \
@@ -56,7 +58,7 @@ HOST_TEST_APP_SOURCES := \
 COVERAGE_DIR := build/coverage
 COVERAGE_FLAGS := -fprofile-instr-generate -fcoverage-mapping
 
-.PHONY: test-host coverage clean-host
+.PHONY: test-host test-asan coverage clean-host
 
 test-host:
 	@mkdir -p build/host_tests
@@ -64,6 +66,15 @@ test-host:
 		$(HOST_TEST_SUPPORT) $(HOST_TEST_SOURCES) $(HOST_TEST_APP_SOURCES) \
 		-o build/host_tests/seos_tests $(HOST_TEST_LDFLAGS)
 	./build/host_tests/seos_tests
+
+# The truncation sweeps only prove a parser returns false. Under the sanitiser
+# they also prove it did not read past the buffer to decide that.
+test-asan:
+	@mkdir -p build/host_tests
+	$(CC) $(HOST_TEST_CFLAGS) -fsanitize=address,undefined -fno-omit-frame-pointer \
+		$(HOST_TEST_SUPPORT) $(HOST_TEST_SOURCES) $(HOST_TEST_APP_SOURCES) \
+		-o build/host_tests/seos_tests_asan $(HOST_TEST_LDFLAGS)
+	./build/host_tests/seos_tests_asan
 
 coverage:
 	@mkdir -p $(COVERAGE_DIR)

@@ -23,7 +23,9 @@ static const uint8_t general_authenticate_header[] = {0x00, 0x87, 0x00};
 static const uint8_t general_authenticate_1_body[] = {0x04, 0x7c, 0x02, 0x81, 0x00, 0x00};
 
 bool seos_is_general_authenticate_1(const uint8_t* apdu, size_t apdu_len) {
-    if(apdu_len < sizeof(general_authenticate_header) + sizeof(general_authenticate_1_body)) {
+    /* The key number sits between the header and the body, so the command is
+     * one byte longer than the two of them. */
+    if(apdu_len < SEOS_GENERAL_AUTHENTICATE_1_LEN) {
         return false;
     }
     if(memcmp(apdu, general_authenticate_header, sizeof(general_authenticate_header)) != 0) {
@@ -522,6 +524,12 @@ bool seos_reader_verify_cryptogram(AuthParameters* params, const uint8_t* crypto
 /* The credential the card holds, named by its file identifier. */
 #define SIO_FILE_TAG 0xff00
 
+/* Objects the answer to a select carries, and the two inside its cryptogram. */
+#define DO_ADF_ALGORITHMS  0xcd
+#define DO_ADF_CRYPTOGRAM  0x85
+#define DO_ADF_OID         0x06
+#define DO_ADF_DIVERSIFIER 0xcf
+
 bool seos_response_status(const uint8_t* data, size_t len, uint16_t* status_word) {
     if(len < sizeof(uint16_t)) return false;
 
@@ -595,27 +603,48 @@ bool seos_reader_select_adf_response(
     AuthParameters* params) {
     seos_log_bitbuffer(TAG, "response", rx_buffer);
 
-    // cd 02 0206
-    // 85 38 41c01a89db89aecf 4b35b4f18dc4045b2a3d65cdd1c1944e8c8548f786e6c51128a5c8546a27120a7e44ba0f4cd7218a026ea1a73a9211a9
-    // 8e 08 20f830009042cb85
-
-    uint8_t expected_header[] = {0xcd, 0x02};
-    if(bit_buffer_get_size_bytes(rx_buffer) < sizeof(expected_header)) {
+    /* The answer may sit behind a byte of transport framing, so `offset` says
+     * where it starts. Everything below counts from there: a buffer that does
+     * not reach past the offset has nothing to read, and a length measured
+     * from it would run backwards past zero. */
+    size_t rx_len = bit_buffer_get_size_bytes(rx_buffer);
+    if(rx_len <= offset) {
         FURI_LOG_W(TAG, "Invalid response length");
         return false;
     }
-    // handle when the buffer starts with other stuff
     const uint8_t* rx_data = bit_buffer_get_data(rx_buffer) + offset;
-    if(memcmp(rx_data, expected_header, sizeof(expected_header)) != 0) {
+    size_t body_len = rx_len - offset;
+
+    /* The status word closes the answer and is not one of the objects. */
+    if(body_len < sizeof(SEOS_SW_SUCCESS)) {
+        FURI_LOG_W(TAG, "Invalid response length");
+        return false;
+    }
+    body_len -= sizeof(SEOS_SW_SUCCESS);
+
+    SeosTlvCursor cursor;
+    seos_tlv_cursor_init(&cursor, rx_data, body_len);
+
+    /* Which cipher and hash the card picked. */
+    SeosTlvObject algorithms;
+    if(!seos_tlv_read(&cursor, &algorithms) || algorithms.tag != DO_ADF_ALGORITHMS ||
+       algorithms.value_len != 2) {
         FURI_LOG_W(TAG, "Invalid response");
         return false;
     }
-    params->cipher = rx_data[2];
-    params->hash = rx_data[3];
+    params->cipher = algorithms.value[0];
+    params->hash = algorithms.value[1];
 
+    SeosTlvObject cryptogram;
+    if(!seos_tlv_read(&cursor, &cryptogram) || cryptogram.tag != DO_ADF_CRYPTOGRAM) {
+        FURI_LOG_W(TAG, "No cryptogram in the select answer");
+        return false;
+    }
+
+    /* Kept whole so the answer can be replayed when this credential is
+     * emulated. */
     memset(credential->adf_response, 0, sizeof(credential->adf_response));
-    size_t response_length =
-        bit_buffer_get_size_bytes(rx_buffer) - offset - sizeof(SEOS_SW_SUCCESS);
+    size_t response_length = body_len;
     if(response_length > sizeof(credential->adf_response)) {
         FURI_LOG_W(
             TAG,
@@ -626,56 +655,76 @@ bool seos_reader_select_adf_response(
     }
     memcpy(credential->adf_response, rx_data, response_length);
 
-    size_t bufLen = 0;
+    /* The cryptogram opens with the initialisation vector, one block long,
+     * and the rest is what was encrypted under it. */
     uint8_t clear[0x40];
     memset(clear, 0, sizeof(clear));
 
-    // Copy IV because mbedtls methods mutate it
-    if(params->cipher == AES_128_CBC) {
-        uint8_t iv[16];
-        memcpy(iv, rx_data + 6, sizeof(iv));
-        bufLen = rx_data[5] - sizeof(iv);
-        uint8_t* enc = (uint8_t*)rx_data + 6 + sizeof(iv);
+    size_t block_size = seos_cipher_block_size(params->cipher);
+    if(block_size == 0) {
+        FURI_LOG_W(TAG, "Unknown cipher (%d)", params->cipher);
+        return false;
+    }
+    if(cryptogram.value_len <= block_size) {
+        FURI_LOG_W(TAG, "Cryptogram carries no more than its vector");
+        return false;
+    }
 
+    size_t enc_len = cryptogram.value_len - block_size;
+    if(enc_len > sizeof(clear) || (enc_len % block_size) != 0) {
+        FURI_LOG_W(TAG, "Cryptogram of %zu will not decrypt", enc_len);
+        return false;
+    }
+
+    /* Copied because the cipher advances the vector as it works. */
+    uint8_t iv[16];
+    memcpy(iv, cryptogram.value, block_size);
+    const uint8_t* enc = cryptogram.value + block_size;
+
+    if(params->cipher == AES_128_CBC) {
         mbedtls_aes_context ctx;
         mbedtls_aes_init(&ctx);
         mbedtls_aes_setkey_dec(&ctx, SEOS_ADF1_PRIV_ENC, sizeof(SEOS_ADF1_PRIV_ENC) * 8);
-        mbedtls_aes_crypt_cbc(&ctx, MBEDTLS_AES_DECRYPT, bufLen, iv, enc, clear);
+        mbedtls_aes_crypt_cbc(&ctx, MBEDTLS_AES_DECRYPT, enc_len, iv, enc, clear);
         mbedtls_aes_free(&ctx);
     } else if(params->cipher == TWO_KEY_3DES_CBC_MODE) {
-        uint8_t iv[8];
-        memcpy(iv, rx_data + 6, sizeof(iv));
-        bufLen = rx_data[5] - sizeof(iv);
-        uint8_t* enc = (uint8_t*)rx_data + 6 + sizeof(iv);
-
         mbedtls_des3_context ctx;
         mbedtls_des3_init(&ctx);
         mbedtls_des3_set2key_dec(&ctx, SEOS_ADF1_PRIV_ENC);
-        mbedtls_des3_crypt_cbc(&ctx, MBEDTLS_DES_DECRYPT, bufLen, iv, enc, clear);
+        mbedtls_des3_crypt_cbc(&ctx, MBEDTLS_DES_DECRYPT, enc_len, iv, enc, clear);
         mbedtls_des3_free(&ctx);
+    } else {
+        FURI_LOG_W(TAG, "Unhandled cipher (%d)", params->cipher);
+        return false;
     }
-    seos_log_buffer(TAG, "clear", clear, sizeof(clear));
+    seos_log_buffer(TAG, "clear", clear, enc_len);
 
-    // 06112b0601040181e438010102011801010202 cf 07 3d4c010c71cfa7 e2d0b41a00cc5e494c8d52b6e562592399fe614a
-    if(clear[0] != 0x06) {
-        FURI_LOG_W(TAG, "Missing expected 0x06 at start of clear");
+    /* What comes back is an application identifier and the diversifier the
+     * card's keys were derived with. Read only as far as was decrypted: past
+     * that is padding, and past that is nothing. */
+    SeosTlvCursor clear_cursor;
+    seos_tlv_cursor_init(&clear_cursor, clear, enc_len);
+
+    SeosTlvObject oid;
+    if(!seos_tlv_read(&clear_cursor, &oid) || oid.tag != DO_ADF_OID) {
+        FURI_LOG_W(TAG, "No application identifier in the cryptogram");
         return false;
     }
-    size_t oidLen = clear[1];
-    if(clear[2 + oidLen] != 0xCF) {
-        FURI_LOG_W(TAG, "Missing expected 0xCF after OID");
+
+    SeosTlvObject diversifier;
+    if(!seos_tlv_read(&clear_cursor, &diversifier) || diversifier.tag != DO_ADF_DIVERSIFIER) {
+        FURI_LOG_W(TAG, "No diversifier after the application identifier");
         return false;
     }
-    credential->diversifier_len = clear[2 + oidLen + 1];
-    if(credential->diversifier_len > sizeof(credential->diversifier)) {
+    if(diversifier.value_len > sizeof(credential->diversifier)) {
         FURI_LOG_W(TAG, "diversifier too large");
         return false;
     }
 
-    uint8_t* diversifier = clear + 2 + oidLen + 2;
-    memcpy(credential->diversifier, diversifier, credential->diversifier_len);
+    credential->diversifier_len = diversifier.value_len;
+    memcpy(credential->diversifier, diversifier.value, diversifier.value_len);
 
-    seos_log_buffer(TAG, "diversifier", diversifier, credential->diversifier_len);
+    seos_log_buffer(TAG, "diversifier", credential->diversifier, credential->diversifier_len);
 
     return true;
 }

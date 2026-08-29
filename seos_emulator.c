@@ -3,6 +3,7 @@
 #include "seos_protocol.h"
 #include "seos_sm_command.h"
 #include "seos_sm_event_ui.h"
+#include "seos_iso14443_4.h"
 
 #define TAG "SeosEmulator"
 
@@ -51,27 +52,48 @@ void seos_emulator_free(SeosEmulator* seos_emulator) {
     free(seos_emulator);
 }
 
+/* Where the command starts in a received frame, and how long it is.
+ *
+ * Newer firmware strips the block header before handing the frame over, so
+ * there is nothing to skip; otherwise the header is ours to read past. */
+static bool emulator_apdu_bounds(const BitBuffer* rx_buffer, size_t* offset, size_t* apdu_len) {
+    const uint8_t* data = bit_buffer_get_data(rx_buffer);
+    size_t len = bit_buffer_get_size_bytes(rx_buffer);
+
+#if __has_include(<lib/nfc/protocols/type_4_tag/type_4_tag.h>)
+    UNUSED(data);
+    if(len == 0) return false;
+    *offset = 0;
+    *apdu_len = len;
+    return true;
+#else
+    return seos_iso14443_4_apdu_bounds(data, len, offset, apdu_len);
+#endif
+}
+
 NfcCommand seos_worker_listener_inspect_reader(Seos* seos) {
     SeosEmulator* seos_emulator = seos->seos_emulator;
     BitBuffer* tx_buffer = seos_emulator->tx_buffer;
     NfcCommand ret = NfcCommandContinue;
 
-    const uint8_t* rx_data = bit_buffer_get_data(seos_emulator->rx_buffer);
-#if __has_include(<lib/nfc/protocols/type_4_tag/type_4_tag.h>)
-    // With PR #4242 ISO14443-4A command PCB is handled by firmware and not passed in rx buffer
-    uint8_t offset = 0;
-#else
-    bool NAD = (rx_data[0] & NAD_MASK) == NAD_MASK;
-    uint8_t offset = NAD ? 2 : 1;
-#endif
+    size_t offset = 0;
+    size_t apdu_len = 0;
+    if(!emulator_apdu_bounds(seos_emulator->rx_buffer, &offset, &apdu_len)) {
+        FURI_LOG_I(TAG, "Frame carries no command");
+        return ret;
+    }
+    const uint8_t* apdu = bit_buffer_get_data(seos_emulator->rx_buffer) + offset;
 
-    // + x to skip stuff before APDU
-    const uint8_t* apdu = rx_data + offset;
+    /* A select names an application after its header, and the tests below read
+     * that far in. */
+    const size_t select_aid_len = sizeof(select_header) + 1 + sizeof(OPERATION_SELECTOR);
 
-    if(memcmp(apdu, select_header, sizeof(select_header)) == 0) {
-        if(memcmp(
+    if(apdu_len >= sizeof(select_header) &&
+       memcmp(apdu, select_header, sizeof(select_header)) == 0) {
+        if(apdu_len >= select_aid_len &&
+           memcmp(
                apdu + sizeof(select_header) + 1, OPERATION_SELECTOR, sizeof(OPERATION_SELECTOR)) ==
-           0) {
+               0) {
             FURI_LOG_I(TAG, "OPERATION_SELECTOR");
             uint8_t enableInspection[] = {
                 0x6f, 0x08, 0x85, 0x06, 0x02, 0x01, 0x40, 0x02, 0x01, 0x00};
@@ -85,7 +107,7 @@ NfcCommand seos_worker_listener_inspect_reader(Seos* seos) {
         }
     } else if(apdu[0] == DESFIRE_CLA) {
         FURI_LOG_I(TAG, "Desfire command received: ignore");
-    } else if(bit_buffer_get_size_bytes(seos_emulator->rx_buffer) > (size_t)(offset + 2)) {
+    } else if(apdu_len > 2) {
         FURI_LOG_I(TAG, "NFC stop; %d bytes", bit_buffer_get_size_bytes(seos_emulator->rx_buffer));
         ret = NfcCommandStop;
     }
@@ -103,20 +125,16 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
     BitBuffer* tx_buffer = seos_emulator->tx_buffer;
     NfcCommand ret = NfcCommandContinue;
 
-    const uint8_t* rx_data = bit_buffer_get_data(seos_emulator->rx_buffer);
-#if __has_include(<lib/nfc/protocols/type_4_tag/type_4_tag.h>)
-    // With PR #4242 ISO14443-4A command PCB is handled by firmware and not passed in rx buffer
-    uint8_t offset = 0;
-#else
-    bool NAD = (rx_data[0] & NAD_MASK) == NAD_MASK;
-    uint8_t offset = NAD ? 2 : 1;
-#endif
+    size_t offset = 0;
+    size_t apdu_len = 0;
+    if(!emulator_apdu_bounds(seos_emulator->rx_buffer, &offset, &apdu_len)) {
+        FURI_LOG_I(TAG, "Frame carries no command");
+        return ret;
+    }
+    const uint8_t* apdu = bit_buffer_get_data(seos_emulator->rx_buffer) + offset;
 
-    // + x to skip stuff before APDU
-    const uint8_t* apdu = rx_data + offset;
-    const size_t apdu_len = bit_buffer_get_size_bytes(seos_emulator->rx_buffer) - offset;
-
-    if(memcmp(apdu, select_header, sizeof(select_header)) == 0) {
+    if(apdu_len >= sizeof(select_header) &&
+       memcmp(apdu, select_header, sizeof(select_header)) == 0) {
         seos_emulator->credential->use_hardcoded = false;
         if(memcmp(apdu + sizeof(select_header) + 1, standard_seos_aid, sizeof(standard_seos_aid)) ==
            0) {
@@ -215,12 +233,11 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
     } else if(seos_sm_command_matches(apdu, apdu_len)) {
         seos_emulator_response_complete = true;
         if(seos_emulator->secure_messaging) {
-            size_t rx_len = bit_buffer_get_size_bytes(seos_emulator->rx_buffer);
             if(!seos_sm_command_handle(
                    seos_emulator->secure_messaging,
                    seos_emulator->credential,
                    apdu,
-                   rx_len - offset,
+                   apdu_len,
                    SEOS_SM_MAX_FRAME,
                    tx_buffer,
                    seos_sm_event_to_view_dispatcher,
@@ -257,19 +274,14 @@ NfcCommand seos_worker_listener_callback(NfcGenericEvent event, void* context) {
     case Iso14443_4aListenerEventTypeReceivedData:
         seos_emulator->rx_buffer = iso14443_4a_event->data->buffer;
         const uint8_t* rx_data = bit_buffer_get_data(seos_emulator->rx_buffer);
-#if __has_include(<lib/nfc/protocols/type_4_tag/type_4_tag.h>)
-        // With PR #4242 ISO14443-4A command PCB is handled by firmware and not passed in rx buffer
-        uint8_t offset = 0;
-        UNUSED(rx_data);
-#else
-        bool NAD = (rx_data[0] & NAD_MASK) == NAD_MASK;
-        uint8_t offset = NAD ? 2 : 1;
-#endif
 
-        if(bit_buffer_get_size_bytes(iso14443_4a_event->data->buffer) == offset) {
+        size_t offset = 0;
+        size_t apdu_len = 0;
+        if(!emulator_apdu_bounds(seos_emulator->rx_buffer, &offset, &apdu_len)) {
             FURI_LOG_I(TAG, "No contents in frame");
             break;
         }
+        UNUSED(rx_data);
 
         seos_log_bitbuffer(TAG, "NFC received", seos_emulator->rx_buffer);
 

@@ -130,6 +130,33 @@ static void assert_reader_refuses(const uint8_t* raw, size_t len) {
     bit_buffer_free(answer);
 }
 
+/* The answer may sit behind a byte of transport framing, so the caller says
+ * where it starts. A buffer shorter than that offset plus the header it looks
+ * for has nothing to compare, and a length counted from it would run
+ * backwards past zero. */
+static MunitResult test_reader_refuses_short_at_offset(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    /* A well-formed answer, one byte of framing ahead of it. */
+    const uint8_t framed[] = {0x00, 0xcd, 0x02, 0x02, 0x06, 0x90, 0x00};
+
+    for(size_t len = 0; len < sizeof(framed); len++) {
+        SeosCredential credential;
+        memset(&credential, 0, sizeof(credential));
+        AuthParameters params;
+        memset(&params, 0, sizeof(params));
+
+        /* Sized to the answer so a read past the end lands outside the
+         * allocation, where the sanitiser can see it. */
+        BitBuffer* answer = bit_buffer_alloc(len > 0 ? len : 1);
+        bit_buffer_copy_bytes(answer, framed, len);
+        munit_assert_false(seos_reader_select_adf_response(answer, 1, &credential, &params));
+        bit_buffer_free(answer);
+    }
+
+    return MUNIT_OK;
+}
+
 static MunitResult test_reader_refuses_malformed(const MunitParameter p[], void* d) {
     (void)p;
     (void)d;
@@ -205,6 +232,12 @@ static MunitTest test_select_adf_cases[] = {
      NULL},
     {(char*)"/reader/malformed",
      test_reader_refuses_malformed,
+     NULL,
+     NULL,
+     MUNIT_TEST_OPTION_NONE,
+     NULL},
+    {(char*)"/reader/short-at-offset",
+     test_reader_refuses_short_at_offset,
      NULL,
      NULL,
      MUNIT_TEST_OPTION_NONE,

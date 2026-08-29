@@ -1,6 +1,7 @@
 #include "munit.h"
 
 extern MunitSuite test_tlv_suite;
+extern MunitSuite test_iso14443_4_suite;
 extern MunitSuite test_cmac_suite;
 extern MunitSuite test_kdf_suite;
 extern MunitSuite test_secure_messaging_suite;
@@ -16,6 +17,11 @@ extern MunitSuite test_select_adf_suite;
 int main(int argc, char* argv[]) {
     MunitSuite child_suites[] = {
         {(char*)"/tlv", test_tlv_suite.tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
+        {(char*)"/iso14443-4",
+         test_iso14443_4_suite.tests,
+         NULL,
+         1,
+         MUNIT_SUITE_OPTION_NONE},
         {(char*)"/cmac", test_cmac_suite.tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
         {(char*)"/kdf", test_kdf_suite.tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
         {(char*)"/secure-messaging",
