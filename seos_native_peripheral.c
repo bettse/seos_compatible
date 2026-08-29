@@ -167,7 +167,8 @@ void seos_native_peripheral_stop(SeosNativePeripheral* seos_native_peripheral) {
 
     furi_check(bt_profile_restore_default(seos_native_peripheral->bt));
 
-    furi_thread_flags_set(furi_thread_get_id(seos_native_peripheral->thread), WorkerEvtStop);
+    furi_thread_flags_set(
+        furi_thread_get_id(seos_native_peripheral->thread), NativePeripheralEvtStop);
     furi_thread_join(seos_native_peripheral->thread);
 }
 
@@ -491,7 +492,7 @@ int32_t seos_native_peripheral_task(void* context) {
 
     while(running) {
         uint32_t events = furi_thread_flags_get();
-        if(events & WorkerEvtStop) {
+        if(events & NativePeripheralEvtStop) {
             running = false;
             break;
         }

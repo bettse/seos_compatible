@@ -22,6 +22,7 @@ void seos_tick_event_callback(void* context) {
 
 Seos* seos_alloc() {
     Seos* seos = malloc(sizeof(Seos));
+    memset(seos, 0, sizeof(Seos));
 
     seos->has_external_ble = false;
     furi_hal_power_enable_otg();

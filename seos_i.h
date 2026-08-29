@@ -26,7 +26,6 @@
 
 #include "seos.h"
 #include "keys.h"
-#include "seos_hci.h"
 #include "seos_credential.h"
 #include "seos_characteristic.h"
 #include "seos_native_peripheral.h"
@@ -101,8 +100,6 @@ struct Seos {
 
     uint8_t keys_version;
     FuriString* active_key_file;
-    Bt* bt;
-    FuriHalBleProfileBase* ble_profile;
     SeosNativePeripheral* native_peripheral;
 };
 
