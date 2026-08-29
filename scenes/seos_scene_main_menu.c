@@ -1,4 +1,5 @@
 #include "../seos_i.h"
+#include "../seos_settings.h"
 
 #define TAG "SceneMainMenu"
 
@@ -14,6 +15,7 @@ enum SubmenuIndex {
     SubmenuIndexInspect,
     SubmenuIndexSavedSeader,
     SubmenuIndexKeys,
+    SubmenuIndexExternalBle,
 };
 
 void seos_scene_main_menu_submenu_callback(void* context, uint32_t index) {
@@ -73,6 +75,13 @@ void seos_scene_main_menu_on_enter(void* context) {
         submenu, keys_label, SubmenuIndexKeys, seos_scene_main_menu_submenu_callback, seos);
 
     submenu_add_item(
+        submenu,
+        seos->has_external_ble ? "External BLE: On" : "External BLE: Off",
+        SubmenuIndexExternalBle,
+        seos_scene_main_menu_submenu_callback,
+        seos);
+
+    submenu_add_item(
         submenu, "About", SubmenuIndexAbout, seos_scene_main_menu_submenu_callback, seos);
 
     submenu_set_selected_item(
@@ -130,6 +139,16 @@ bool seos_scene_main_menu_on_event(void* context, SceneManagerEvent event) {
             scene_manager_set_scene_state(
                 seos->scene_manager, SeosSceneMainMenu, SubmenuIndexAbout);
             scene_manager_next_scene(seos->scene_manager, SeosSceneAbout);
+            consumed = true;
+        } else if(event.event == SubmenuIndexExternalBle) {
+            /* Turning this on is what makes the dongle stack loadable at all;
+             * with it off nothing ever asks for that plugin. */
+            seos->has_external_ble = !seos->has_external_ble;
+            seos_settings_save(seos);
+            scene_manager_set_scene_state(
+                seos->scene_manager, SeosSceneMainMenu, SubmenuIndexExternalBle);
+            /* Rebuild so the label and the scanners item follow the change. */
+            seos_scene_main_menu_on_enter(seos);
             consumed = true;
         } else if(event.event == SubmenuIndexKeys) {
             scene_manager_set_scene_state(

@@ -87,7 +87,8 @@ struct Seos {
     SeosEmulator* seos_emulator;
     SeosReader* seos_reader;
 
-    // BLE, loaded only while a scene needs it
+    // BLE, loaded only while a scene needs it. has_external_ble is the saved
+    // setting: whether the user has a dongle attached and wants it used.
     bool has_external_ble;
     const SeosBlePlugin* ble_plugin;
     void* ble_context;

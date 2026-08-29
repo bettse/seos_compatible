@@ -69,13 +69,17 @@ bool seos_ble_acquire(Seos* seos, SeosBleStack stack) {
     return true;
 }
 
-bool seos_ble_acquire_peripheral(Seos* seos) {
-    if(seos_ble_acquire(seos, SeosBleStackExternal)) {
-        seos->has_external_ble = true;
-        return true;
+bool seos_ble_acquire_role(Seos* seos, SeosBleRole role) {
+    switch(seos_ble_choose_stack(seos->has_external_ble, role)) {
+    case SeosBleChoiceExternal:
+        return seos_ble_acquire(seos, SeosBleStackExternal);
+    case SeosBleChoiceNative:
+        return seos_ble_acquire(seos, SeosBleStackNative);
+    case SeosBleChoiceNone:
+        FURI_LOG_W(TAG, "No BLE stack can serve this role");
+        return false;
     }
-    seos->has_external_ble = false;
-    return seos_ble_acquire(seos, SeosBleStackNative);
+    return false;
 }
 
 void seos_ble_start(Seos* seos, FlowMode mode) {

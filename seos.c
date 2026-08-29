@@ -1,4 +1,5 @@
 #include "seos_i.h"
+#include "seos_settings.h"
 
 #define TAG "Seos"
 
@@ -81,6 +82,7 @@ Seos* seos_alloc() {
     seos->keys_version = 0;
 
     seos_load_keys_from_file(seos, SEOS_DEFAULT_KEYS_FILENAME);
+    seos_settings_load(seos);
 
     return seos;
 }

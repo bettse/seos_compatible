@@ -15,11 +15,12 @@ void seos_scene_ble_central_on_enter(void* context) {
     popup_set_header(popup, "Starting...", 68, 20, AlignLeft, AlignTop);
     // popup_set_icon(popup, 0, 3, &I_RFIDDolphinReceive_97x61);
 
-    /* Only the external dongle drives the central role. */
-    if(seos_ble_acquire(seos, SeosBleStackExternal)) {
+    /* Only the external dongle drives the central role, and only when the
+     * setting says to use it. */
+    if(seos_ble_acquire_role(seos, SeosBleRoleCentral)) {
         seos_ble_start(seos, seos->flow_mode);
     } else {
-        popup_set_header(popup, "No BLE\nsupport", 68, 20, AlignLeft, AlignTop);
+        popup_set_header(popup, "External BLE\nis off", 68, 20, AlignLeft, AlignTop);
     }
 
     seos_blink_start(seos);

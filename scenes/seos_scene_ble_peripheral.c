@@ -18,7 +18,7 @@ void seos_scene_ble_peripheral_on_enter(void* context) {
         popup_set_icon(popup, 0, 3, &I_RFIDDolphinSend_97x61);
     }
 
-    if(seos_ble_acquire_peripheral(seos)) {
+    if(seos_ble_acquire_role(seos, SeosBleRolePeripheral)) {
         seos_ble_start(seos, seos->flow_mode);
     } else {
         popup_set_header(popup, "No BLE\nsupport", 68, 30, AlignLeft, AlignTop);

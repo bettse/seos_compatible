@@ -1,6 +1,7 @@
 #pragma once
 
 #include "seos_ble_plugin.h"
+#include "seos_ble_policy.h"
 
 /* Loading and unloading a BLE stack.
  *
@@ -12,12 +13,11 @@
 /* Loads the stack for `stack`, or returns false if it is not there. */
 bool seos_ble_acquire(Seos* seos, SeosBleStack stack);
 
-/* Loads a stack able to act as a peripheral.
+/* Loads a stack able to serve `role`, honouring the external BLE setting.
  *
- * The dongle is preferred when it is present, since it is the one the user
- * went to the trouble of attaching; the Flipper's own radio is the fallback.
- * Records which was taken in has_external_ble. */
-bool seos_ble_acquire_peripheral(Seos* seos);
+ * Returns false when nothing can: a central role with the dongle turned off,
+ * or a plugin that will not load. */
+bool seos_ble_acquire_role(Seos* seos, SeosBleRole role);
 
 /* Starts the loaded stack in `mode`. Does nothing if none is loaded. */
 void seos_ble_start(Seos* seos, FlowMode mode);
