@@ -489,12 +489,7 @@ bool seos_reader_select_adf_response(
     uint8_t* diversifier = clear + 2 + oidLen + 2;
     memcpy(credential->diversifier, diversifier, credential->diversifier_len);
 
-    char display[SEOS_WORKER_MAX_BUFFER_SIZE * 2 + 1];
-    memset(display, 0, sizeof(display));
-    for(uint8_t i = 0; i < credential->diversifier_len; i++) {
-        snprintf(display + (i * 2), sizeof(display), "%02x", diversifier[i]);
-    }
-    FURI_LOG_D(TAG, "diversifier: %s", display);
+    seos_log_buffer(TAG, "diversifier", diversifier, credential->diversifier_len);
 
     return true;
 }

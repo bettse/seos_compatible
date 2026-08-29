@@ -277,19 +277,8 @@ static bool seos_credential_file_load_seader(
         } // Returns NULL if char cannot be found
 
         SeosCredential* cred = seos_credential;
-        char display[128 * 2 + 1];
-
-        memset(display, 0, sizeof(display));
-        for(uint8_t i = 0; i < cred->sio_len; i++) {
-            snprintf(display + (i * 2), sizeof(display), "%02x", cred->sio[i]);
-        }
-        FURI_LOG_D(TAG, "SIO: %s", display);
-
-        memset(display, 0, sizeof(display));
-        for(uint8_t i = 0; i < cred->diversifier_len; i++) {
-            snprintf(display + (i * 2), sizeof(display), "%02x", cred->diversifier[i]);
-        }
-        FURI_LOG_D(TAG, "Diversifier: %s", display);
+        seos_log_buffer(TAG, "SIO", cred->sio, cred->sio_len);
+        seos_log_buffer(TAG, "Diversifier", cred->diversifier, cred->diversifier_len);
 
         parsed = true;
     } while(false);

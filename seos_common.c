@@ -8,43 +8,27 @@ void seos_worker_random_nonce(uint8_t* nonce, size_t len) {
 }
 
 void seos_log_buffer(char* TAG, char* prefix, uint8_t* buffer, size_t buffer_len) {
-    /* These run on every message and build a string a byte at a time. Do not
-     * pay for it when the result is going to be thrown away. */
+    /* This runs on every message. Do not build the string when the log call
+     * is going to throw it away. */
     if(furi_log_get_level() < FuriLogLevelDebug) return;
 
-    char display[SEOS_WORKER_MAX_BUFFER_SIZE * 2 + 1];
-
     size_t limit = MIN((size_t)SEOS_WORKER_MAX_BUFFER_SIZE, buffer_len);
-    memset(display, 0, sizeof(display));
-    for(uint8_t i = 0; i < limit; i++) {
-        snprintf(display + (i * 2), sizeof(display), "%02x", buffer[i]);
-    }
+
+    char display[SEOS_WORKER_MAX_BUFFER_SIZE * 2 + 1];
+    uint8_to_hex_chars(buffer, (uint8_t*)display, (int)(limit * 2));
+    display[limit * 2] = '\0';
+
     if(prefix) {
-        FURI_LOG_D(TAG, "%s %d: %s", prefix, limit, display);
+        FURI_LOG_D(TAG, "%s %d: %s", prefix, buffer_len, display);
     } else {
-        FURI_LOG_D(TAG, "Buffer %d: %s", limit, display);
+        FURI_LOG_D(TAG, "Buffer %d: %s", buffer_len, display);
     }
 }
 
 void seos_log_bitbuffer(char* TAG, char* prefix, BitBuffer* buffer) {
     furi_assert(buffer);
-    if(furi_log_get_level() < FuriLogLevelDebug) return;
-
-    size_t length = bit_buffer_get_size_bytes(buffer);
-    const uint8_t* data = bit_buffer_get_data(buffer);
-
-    char display[SEOS_WORKER_MAX_BUFFER_SIZE * 2 + 1];
-
-    size_t limit = MIN((size_t)SEOS_WORKER_MAX_BUFFER_SIZE, length);
-    memset(display, 0, sizeof(display));
-    for(uint8_t i = 0; i < limit; i++) {
-        snprintf(display + (i * 2), sizeof(display), "%02x", data[i]);
-    }
-    if(prefix) {
-        FURI_LOG_D(TAG, "%s %d: %s", prefix, length, display);
-    } else {
-        FURI_LOG_D(TAG, "Buffer %d: %s", length, display);
-    }
+    seos_log_buffer(
+        TAG, prefix, (uint8_t*)bit_buffer_get_data(buffer), bit_buffer_get_size_bytes(buffer));
 }
 
 void seos_worker_diversify_key(

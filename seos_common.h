@@ -6,6 +6,7 @@
 #include <furi.h>
 #include <furi_hal.h>
 #include <lib/toolbox/bit_buffer.h>
+#include <lib/toolbox/hex.h>
 
 #include <mbedtls/des.h>
 #include <mbedtls/aes.h>

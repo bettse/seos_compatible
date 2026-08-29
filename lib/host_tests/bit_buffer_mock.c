@@ -1,4 +1,5 @@
 #include <lib/toolbox/bit_buffer.h>
+#include <lib/toolbox/hex.h>
 
 #include <furi.h>
 
@@ -70,4 +71,10 @@ uint8_t bit_buffer_get_byte(const BitBuffer* buf, size_t index) {
     furi_check(buf);
     furi_check(index < buf->size_bytes);
     return buf->data[index];
+}
+
+void uint8_to_hex_chars(const uint8_t* src, uint8_t* target, int length) {
+    const char chars[] = "0123456789ABCDEF";
+    while(--length >= 0)
+        target[length] = chars[(src[length >> 1] >> ((1 - (length & 1)) << 2)) & 0xF];
 }
