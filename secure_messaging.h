@@ -18,6 +18,17 @@
  * cryptogram and its objects, each group padded to a block boundary. */
 #define SECURE_MESSAGING_CMAC_INPUT_SIZE 192
 
+/* Largest span of protected objects: a cryptogram header, the cryptogram, and
+ * the protected status word. */
+#define SECURE_MESSAGING_OBJECTS_SIZE 144
+
+/* The command header covered by the checksum. */
+#define SECURE_MESSAGING_APDU_HEADER_LEN 4
+
+/* Secure messaging errors are answered unprotected, and end the session. */
+#define SECURE_MESSAGING_SW_MISSING_DO   0x6987
+#define SECURE_MESSAGING_SW_INCORRECT_DO 0x6988
+
 /* Where the cryptogram starts. A command carries a four byte header and a
  * length byte ahead of it; a response body starts with the cryptogram. */
 #define SECURE_MESSAGING_CAPDU_BODY_OFFSET 5
@@ -29,6 +40,8 @@ typedef struct {
     uint8_t CMACKey[16];
     uint8_t aesContext[16];
     uint8_t desContext[8];
+    /* Status word for the last message that failed to unwrap, or 0. */
+    uint16_t last_error_sw;
 } SecureMessaging;
 
 SecureMessaging* secure_messaging_alloc(AuthParameters* params);

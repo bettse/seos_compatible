@@ -212,9 +212,9 @@ static MunitResult test_rejects_malformed(const MunitParameter p[], void* d) {
     return MUNIT_OK;
 }
 
-/* Ciphertext that decrypts to something without valid padding is a wrong key
- * or a tampered message, and must not be handed back as plaintext. */
-static MunitResult test_rejects_bad_padding(const MunitParameter p[], void* d) {
+/* A session holding the wrong keys must refuse the message rather than hand
+ * back whatever the ciphertext happens to decrypt to. */
+static MunitResult test_rejects_wrong_key(const MunitParameter p[], void* d) {
     (void)p;
     (void)d;
     SecureMessaging* sender = session(AES_128_CBC, SHA256);
@@ -229,6 +229,139 @@ static MunitResult test_rejects_bad_padding(const MunitParameter p[], void* d) {
     bit_buffer_free(buffer);
     secure_messaging_free(sender);
     secure_messaging_free(wrong_key);
+    return MUNIT_OK;
+}
+
+/* Builds a wrapped command, lets the caller corrupt it, and checks the
+ * receiver refuses it with the given status word. */
+static void assert_tamper_rejected(size_t index, uint8_t mask, uint16_t expected_sw) {
+    SecureMessaging* sender = session(AES_128_CBC, SHA256);
+    SecureMessaging* receiver = session(AES_128_CBC, SHA256);
+
+    uint8_t header[] = {0x0c, 0xcb, 0x3f, 0xff};
+    uint8_t message[] = {0x5c, 0x02, 0xff, 0x00};
+
+    BitBuffer* buffer = bit_buffer_alloc(RX_CAPACITY);
+    munit_assert_true(secure_messaging_wrap_apdu(
+        sender, message, sizeof(message), header, sizeof(header), buffer));
+
+    uint8_t raw[RX_CAPACITY];
+    size_t len = bit_buffer_get_size_bytes(buffer);
+    munit_assert_size(index, <, len);
+    memcpy(raw, bit_buffer_get_data(buffer), len);
+    raw[index] ^= mask;
+    bit_buffer_copy_bytes(buffer, raw, len);
+
+    munit_assert_false(secure_messaging_unwrap_apdu(receiver, buffer));
+    munit_assert_uint16(receiver->last_error_sw, ==, expected_sw);
+
+    bit_buffer_free(buffer);
+    secure_messaging_free(sender);
+    secure_messaging_free(receiver);
+}
+
+/* An altered cryptogram must not reach the caller as plaintext. */
+static MunitResult test_rejects_tampered_cryptogram(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    /* Header(4), length(1), cryptogram header(2), then the first block. */
+    assert_tamper_rejected(7, 0x01, SECURE_MESSAGING_SW_INCORRECT_DO);
+    return MUNIT_OK;
+}
+
+/* The command header is inside the checksum scope, so changing P1 must be
+ * caught even though the cryptogram is untouched. */
+static MunitResult test_rejects_tampered_header(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    assert_tamper_rejected(2, 0x01, SECURE_MESSAGING_SW_INCORRECT_DO);
+    return MUNIT_OK;
+}
+
+static MunitResult test_rejects_tampered_checksum(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    SecureMessaging* sender = session(AES_128_CBC, SHA256);
+    SecureMessaging* receiver = session(AES_128_CBC, SHA256);
+
+    uint8_t header[] = {0x0c, 0xcb, 0x3f, 0xff};
+    uint8_t message[] = {0x5c, 0x02, 0xff, 0x00};
+
+    BitBuffer* buffer = bit_buffer_alloc(RX_CAPACITY);
+    munit_assert_true(secure_messaging_wrap_apdu(
+        sender, message, sizeof(message), header, sizeof(header), buffer));
+
+    uint8_t raw[RX_CAPACITY];
+    size_t len = bit_buffer_get_size_bytes(buffer);
+    memcpy(raw, bit_buffer_get_data(buffer), len);
+    /* The checksum is the last eight bytes before the trailing Le. */
+    raw[len - 2] ^= 0x80;
+    bit_buffer_copy_bytes(buffer, raw, len);
+
+    munit_assert_false(secure_messaging_unwrap_apdu(receiver, buffer));
+    munit_assert_uint16(receiver->last_error_sw, ==, SECURE_MESSAGING_SW_INCORRECT_DO);
+
+    bit_buffer_free(buffer);
+    secure_messaging_free(sender);
+    secure_messaging_free(receiver);
+    return MUNIT_OK;
+}
+
+/* A message carrying no checksum object is missing a required object. */
+static MunitResult test_rejects_missing_checksum(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    SecureMessaging* receiver = session(AES_128_CBC, SHA256);
+
+    uint8_t raw[RX_CAPACITY];
+    size_t len = hex_to_bytes(
+        "0ccb3fff14"
+        "8510000102030405060708090a0b0c0d0e0f"
+        "9700",
+        raw,
+        sizeof(raw));
+
+    BitBuffer* buffer = bit_buffer_alloc(RX_CAPACITY);
+    bit_buffer_copy_bytes(buffer, raw, len);
+
+    munit_assert_false(secure_messaging_unwrap_apdu(receiver, buffer));
+    munit_assert_uint16(receiver->last_error_sw, ==, SECURE_MESSAGING_SW_MISSING_DO);
+
+    bit_buffer_free(buffer);
+    secure_messaging_free(receiver);
+    return MUNIT_OK;
+}
+
+/* The counter advances per message, so replaying one no longer checksums. */
+static MunitResult test_rejects_replay(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    SecureMessaging* sender = session(AES_128_CBC, SHA256);
+    SecureMessaging* receiver = session(AES_128_CBC, SHA256);
+
+    uint8_t header[] = {0x0c, 0xcb, 0x3f, 0xff};
+    uint8_t message[] = {0x5c, 0x02, 0xff, 0x00};
+
+    BitBuffer* first = bit_buffer_alloc(RX_CAPACITY);
+    munit_assert_true(secure_messaging_wrap_apdu(
+        sender, message, sizeof(message), header, sizeof(header), first));
+
+    uint8_t raw[RX_CAPACITY];
+    size_t len = bit_buffer_get_size_bytes(first);
+    memcpy(raw, bit_buffer_get_data(first), len);
+
+    munit_assert_true(secure_messaging_unwrap_apdu(receiver, first));
+
+    /* The same bytes again, with the receiver one message further on. */
+    BitBuffer* replay = bit_buffer_alloc(RX_CAPACITY);
+    bit_buffer_copy_bytes(replay, raw, len);
+    munit_assert_false(secure_messaging_unwrap_apdu(receiver, replay));
+    munit_assert_uint16(receiver->last_error_sw, ==, SECURE_MESSAGING_SW_INCORRECT_DO);
+
+    bit_buffer_free(first);
+    bit_buffer_free(replay);
+    secure_messaging_free(sender);
+    secure_messaging_free(receiver);
     return MUNIT_OK;
 }
 
@@ -276,12 +409,32 @@ static MunitTest test_secure_messaging_cases[] = {
      MUNIT_TEST_OPTION_NONE,
      NULL},
     {(char*)"/unwrap/malformed", test_rejects_malformed, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
-    {(char*)"/unwrap/bad-padding",
-     test_rejects_bad_padding,
+    {(char*)"/unwrap/wrong-key", test_rejects_wrong_key, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
+    {(char*)"/checksum/tampered-cryptogram",
+     test_rejects_tampered_cryptogram,
      NULL,
      NULL,
      MUNIT_TEST_OPTION_NONE,
      NULL},
+    {(char*)"/checksum/tampered-header",
+     test_rejects_tampered_header,
+     NULL,
+     NULL,
+     MUNIT_TEST_OPTION_NONE,
+     NULL},
+    {(char*)"/checksum/tampered-checksum",
+     test_rejects_tampered_checksum,
+     NULL,
+     NULL,
+     MUNIT_TEST_OPTION_NONE,
+     NULL},
+    {(char*)"/checksum/missing",
+     test_rejects_missing_checksum,
+     NULL,
+     NULL,
+     MUNIT_TEST_OPTION_NONE,
+     NULL},
+    {(char*)"/checksum/replay", test_rejects_replay, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
     {(char*)"/counter/carry", test_counter_carries, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
     {(char*)"/credential/path-extension",
      test_path_extension_is_single,
