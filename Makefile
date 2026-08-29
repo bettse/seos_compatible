@@ -30,7 +30,8 @@ HOST_TEST_SOURCES := \
 	$(HOST_TESTS)/test_cmac.c \
 	$(HOST_TESTS)/test_kdf.c \
 	$(HOST_TESTS)/test_secure_messaging.c \
-	$(HOST_TESTS)/test_protocol.c
+	$(HOST_TESTS)/test_protocol.c \
+	$(HOST_TESTS)/test_sm_command.c
 
 HOST_TEST_APP_SOURCES := \
 	aes_cmac.c \
@@ -38,6 +39,7 @@ HOST_TEST_APP_SOURCES := \
 	seos_common.c \
 	secure_messaging.c \
 	seos_protocol.c \
+	seos_sm_command.c \
 	memmem.c
 
 .PHONY: test-host clean-host

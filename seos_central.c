@@ -1,4 +1,6 @@
 #include "seos_central_i.h"
+
+#include "seos_sm_command.h"
 #include "seos_common.h"
 
 #define TAG "SeosCentral"
@@ -12,7 +14,6 @@ static uint8_t select_adf_header[] = {0x80, 0xa5, 0x04, 0x00};
 static uint8_t general_authenticate_1[] =
     {0x00, 0x87, 0x00, 0x01, 0x04, 0x7c, 0x02, 0x81, 0x00, 0x00};
 static uint8_t general_authenticate_2_header[] = {0x00, 0x87, 0x00, 0x01};
-static uint8_t secure_messaging_header[] = {0x0c, 0xcb, 0x3f, 0xff};
 
 SeosCentral* seos_central_alloc(Seos* seos) {
     SeosCentral* seos_central = malloc(sizeof(SeosCentral));
@@ -51,6 +52,13 @@ void seos_central_start(SeosCentral* seos_central, FlowMode mode) {
 
 void seos_central_stop(SeosCentral* seos_central) {
     seos_att_stop(seos_central->seos_att);
+}
+
+static void seos_central_sm_event(void* context, SeosSmEvent event) {
+    Seos* seos = context;
+    if(event == SeosSmEventSioRequested) {
+        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventSIORequested);
+    }
 }
 
 void seos_central_notify(void* context, const uint8_t* buffer, size_t buffer_len) {
@@ -125,49 +133,16 @@ void seos_central_notify(void* context, const uint8_t* buffer, size_t buffer_len
             bit_buffer_reset(response);
         }
         seos_central->phase = REQUEST_SIO;
-    } else if(memcmp(apdu, secure_messaging_header, sizeof(secure_messaging_header)) == 0) {
-        uint8_t request_sio[] = {0x5c, 0x02, 0xff, 0x00};
-
+    } else if(memcmp(apdu, SEOS_SM_HEADER, sizeof(SEOS_SM_HEADER)) == 0) {
         if(seos_central->secure_messaging) {
-            FURI_LOG_D(TAG, "Unwrap secure message");
-
-            // 0ccb3fff 16 8508fa8395d30de4e8e097008e085da7edbd833b002d00
-            BitBuffer* tmp = bit_buffer_alloc(apdu_len);
-            bit_buffer_append_bytes(tmp, apdu, apdu_len);
-
-            seos_log_bitbuffer(TAG, "NFC received(wrapped)", tmp);
-            if(!secure_messaging_unwrap_apdu(seos_central->secure_messaging, tmp)) {
-                FURI_LOG_W(TAG, "Could not unwrap secure message");
-                bit_buffer_free(tmp);
-                return;
-            }
-            seos_log_bitbuffer(TAG, "NFC received(clear)", tmp);
-
-            const uint8_t* message = bit_buffer_get_data(tmp);
-            if(bit_buffer_get_size_bytes(tmp) >= sizeof(request_sio) &&
-               memcmp(message, request_sio, sizeof(request_sio)) == 0) {
-                view_dispatcher_send_custom_event(
-                    seos_central->seos->view_dispatcher, SeosCustomEventSIORequested);
-                BitBuffer* sio_file = bit_buffer_alloc(128);
-                bit_buffer_append_bytes(sio_file, message + 2, 2); // fileId
-                bit_buffer_append_byte(sio_file, seos_central->credential->sio_len);
-                bit_buffer_append_bytes(
-                    sio_file, seos_central->credential->sio, seos_central->credential->sio_len);
-
-                seos_log_bitbuffer(TAG, "sio_file", sio_file);
-                secure_messaging_wrap_rapdu(
-                    seos_central->secure_messaging,
-                    (uint8_t*)bit_buffer_get_data(sio_file),
-                    bit_buffer_get_size_bytes(sio_file),
-                    response);
-
-                bit_buffer_free(sio_file);
-            } else {
-                FURI_LOG_W(TAG, "Did not match the cleartext request");
-            }
-            bit_buffer_append_bytes(response, (uint8_t*)success, sizeof(success));
-
-            bit_buffer_free(tmp);
+            seos_sm_command_handle(
+                seos_central->secure_messaging,
+                seos_central->credential,
+                apdu,
+                apdu_len,
+                response,
+                seos_central_sm_event,
+                seos_central->seos);
         } else {
             uint8_t no_sm[] = {0x69, 0x88};
             bit_buffer_append_bytes(response, no_sm, sizeof(no_sm));

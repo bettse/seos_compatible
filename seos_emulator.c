@@ -1,6 +1,7 @@
 #include "seos_emulator_i.h"
 
 #include "seos_protocol.h"
+#include "seos_sm_command.h"
 
 #define TAG "SeosEmulator"
 
@@ -21,7 +22,6 @@ static uint8_t select_adf_header[] = {0x80, 0xa5, 0x04, 0x00};
 static uint8_t general_authenticate_1[] =
     {0x00, 0x87, 0x00, 0x01, 0x04, 0x7c, 0x02, 0x81, 0x00, 0x00};
 static uint8_t general_authenticate_2_header[] = {0x00, 0x87, 0x00, 0x01};
-static uint8_t secure_messaging_header[] = {0x0c, 0xcb, 0x3f, 0xff};
 
 SeosEmulator* seos_emulator_alloc(SeosCredential* credential) {
     SeosEmulator* seos_emulator = malloc(sizeof(SeosEmulator));
@@ -51,6 +51,13 @@ void seos_emulator_free(SeosEmulator* seos_emulator) {
 
     bit_buffer_free(seos_emulator->tx_buffer);
     free(seos_emulator);
+}
+
+static void seos_emulator_sm_event(void* context, SeosSmEvent event) {
+    Seos* seos = context;
+    if(event == SeosSmEventSioRequested) {
+        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventSIORequested);
+    }
 }
 
 NfcCommand seos_worker_listener_inspect_reader(Seos* seos) {
@@ -201,51 +208,17 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
         view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventAuthenticated);
         // Prepare for future communication
         seos_emulator->secure_messaging = secure_messaging_alloc(&seos_emulator->params);
-    } else if(memcmp(apdu, secure_messaging_header, sizeof(secure_messaging_header)) == 0) {
-        uint8_t request_sio[] = {0x5c, 0x02, 0xff, 0x00};
-
+    } else if(memcmp(apdu, SEOS_SM_HEADER, sizeof(SEOS_SM_HEADER)) == 0) {
         if(seos_emulator->secure_messaging) {
-            FURI_LOG_D(TAG, "Unwrap secure message");
-
-            // 0b00 0ccb3fff 16 8508fa8395d30de4e8e097008e085da7edbd833b002d00
-            // Ignore 2 iso frame bytes
-            size_t bytes_to_ignore = offset;
-            BitBuffer* tmp = bit_buffer_alloc(bit_buffer_get_size_bytes(seos_emulator->rx_buffer));
-            bit_buffer_append_bytes(
-                tmp,
-                bit_buffer_get_data(seos_emulator->rx_buffer) + bytes_to_ignore,
-                bit_buffer_get_size_bytes(seos_emulator->rx_buffer) - bytes_to_ignore);
-
-            seos_log_bitbuffer(TAG, "NFC received(wrapped)", tmp);
-            if(!secure_messaging_unwrap_apdu(seos_emulator->secure_messaging, tmp)) {
-                FURI_LOG_W(TAG, "Could not unwrap secure message");
-                bit_buffer_free(tmp);
-                return ret;
-            }
-            seos_log_bitbuffer(TAG, "NFC received(clear)", tmp);
-
-            const uint8_t* message = bit_buffer_get_data(tmp);
-            if(bit_buffer_get_size_bytes(tmp) >= sizeof(request_sio) &&
-               memcmp(message, request_sio, sizeof(request_sio)) == 0) {
-                view_dispatcher_send_custom_event(
-                    seos->view_dispatcher, SeosCustomEventSIORequested);
-                BitBuffer* sio_file = bit_buffer_alloc(128);
-                bit_buffer_append_bytes(sio_file, message + 2, 2); // fileId
-                bit_buffer_append_byte(sio_file, seos_emulator->credential->sio_len);
-                bit_buffer_append_bytes(
-                    sio_file, seos_emulator->credential->sio, seos_emulator->credential->sio_len);
-
-                seos_log_bitbuffer(TAG, "NFC send(clear)", sio_file);
-                secure_messaging_wrap_rapdu(
-                    seos_emulator->secure_messaging,
-                    (uint8_t*)bit_buffer_get_data(sio_file),
-                    bit_buffer_get_size_bytes(sio_file),
-                    tx_buffer);
-
-                bit_buffer_free(sio_file);
-            }
-
-            bit_buffer_free(tmp);
+            size_t rx_len = bit_buffer_get_size_bytes(seos_emulator->rx_buffer);
+            seos_sm_command_handle(
+                seos_emulator->secure_messaging,
+                seos_emulator->credential,
+                apdu,
+                rx_len - offset,
+                tx_buffer,
+                seos_emulator_sm_event,
+                seos);
         } else {
             uint8_t no_sm[] = {0x69, 0x88};
             bit_buffer_append_bytes(tx_buffer, no_sm, sizeof(no_sm));

@@ -4,6 +4,7 @@ extern MunitSuite test_cmac_suite;
 extern MunitSuite test_kdf_suite;
 extern MunitSuite test_secure_messaging_suite;
 extern MunitSuite test_protocol_suite;
+extern MunitSuite test_sm_command_suite;
 
 int main(int argc, char* argv[]) {
     MunitSuite child_suites[] = {
@@ -15,6 +16,7 @@ int main(int argc, char* argv[]) {
          1,
          MUNIT_SUITE_OPTION_NONE},
         {(char*)"/protocol", test_protocol_suite.tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
+        {(char*)"/sm-command", test_sm_command_suite.tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
         {NULL, NULL, NULL, 0, MUNIT_SUITE_OPTION_NONE},
     };
     MunitSuite main_suite = {

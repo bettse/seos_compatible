@@ -1,5 +1,7 @@
 #include "seos_characteristic_i.h"
 
+#include "seos_sm_command.h"
+
 #define TAG "SeosCharacteristic"
 
 static uint8_t standard_seos_aid[] = {0xa0, 0x00, 0x00, 0x04, 0x40, 0x00, 0x01, 0x01, 0x00, 0x01};
@@ -16,7 +18,6 @@ static uint8_t file_not_found[] = {0x6A, 0x82};
 static uint8_t select_header[] = {0x00, 0xa4, 0x04, 0x00};
 static uint8_t select_adf_header[] = {0x80, 0xa5, 0x04, 0x00};
 static uint8_t general_authenticate_2_header[] = {0x00, 0x87, 0x00, 0x01};
-static uint8_t secure_messaging_header[] = {0x0c, 0xcb, 0x3f, 0xff};
 
 SeosCharacteristic* seos_characteristic_alloc(Seos* seos) {
     SeosCharacteristic* seos_characteristic = malloc(sizeof(SeosCharacteristic));
@@ -154,8 +155,8 @@ void seos_characteristic_reader_flow(
             secure_messaging,
             message,
             sizeof(message),
-            secure_messaging_header,
-            sizeof(secure_messaging_header),
+            (uint8_t*)SEOS_SM_HEADER,
+            sizeof(SEOS_SM_HEADER),
             payload);
         seos_characteristic->phase = REQUEST_SIO;
         view_dispatcher_send_custom_event(
@@ -203,6 +204,13 @@ void seos_characteristic_reader_flow(
         //ignore
     } else {
         FURI_LOG_W(TAG, "No match for write request");
+    }
+}
+
+static void seos_characteristic_sm_event(void* context, SeosSmEvent event) {
+    Seos* seos = context;
+    if(event == SeosSmEventSioRequested) {
+        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventSIORequested);
     }
 }
 
@@ -257,54 +265,17 @@ void seos_characteristic_cred_flow(
         // Prepare for future communication
         seos_characteristic->secure_messaging =
             secure_messaging_alloc(&seos_characteristic->params);
-    } else if(memcmp(apdu, secure_messaging_header, sizeof(secure_messaging_header)) == 0) {
-        uint8_t request_sio[] = {0x5c, 0x02, 0xff, 0x00};
-
+    } else if(memcmp(apdu, SEOS_SM_HEADER, sizeof(SEOS_SM_HEADER)) == 0) {
         if(seos_characteristic->secure_messaging) {
-            FURI_LOG_D(TAG, "Unwrap secure message");
-
-            // c0 0ccb3fff 16 8508fa8395d30de4e8e097008e085da7edbd833b002d00
-            // Ignore 1 BLE_START byte
-            size_t bytes_to_ignore = 1;
-            BitBuffer* tmp = bit_buffer_alloc(bit_buffer_get_size_bytes(attribute_value));
-            bit_buffer_append_bytes(
-                tmp,
-                bit_buffer_get_data(attribute_value) + bytes_to_ignore,
-                bit_buffer_get_size_bytes(attribute_value) - bytes_to_ignore);
-
-            seos_log_bitbuffer(TAG, "received(wrapped)", tmp);
-            if(!secure_messaging_unwrap_apdu(seos_characteristic->secure_messaging, tmp)) {
-                FURI_LOG_W(TAG, "Could not unwrap secure message");
-                bit_buffer_free(tmp);
-                return;
-            }
-            seos_log_bitbuffer(TAG, "received(clear)", tmp);
-
-            const uint8_t* message = bit_buffer_get_data(tmp);
-            if(bit_buffer_get_size_bytes(tmp) >= sizeof(request_sio) &&
-               memcmp(message, request_sio, sizeof(request_sio)) == 0) {
-                view_dispatcher_send_custom_event(
-                    seos_characteristic->seos->view_dispatcher, SeosCustomEventSIORequested);
-
-                BitBuffer* sio_file = bit_buffer_alloc(128);
-                bit_buffer_append_bytes(sio_file, message + 2, 2); // fileId
-                bit_buffer_append_byte(sio_file, seos_characteristic->credential->sio_len);
-                bit_buffer_append_bytes(
-                    sio_file,
-                    seos_characteristic->credential->sio,
-                    seos_characteristic->credential->sio_len);
-
-                secure_messaging_wrap_rapdu(
-                    seos_characteristic->secure_messaging,
-                    (uint8_t*)bit_buffer_get_data(sio_file),
-                    bit_buffer_get_size_bytes(sio_file),
-                    payload);
-                bit_buffer_append_bytes(payload, (uint8_t*)success, sizeof(success));
-
-                bit_buffer_free(sio_file);
-            }
-
-            bit_buffer_free(tmp);
+            /* apdu already skips the leading BLE start byte. */
+            seos_sm_command_handle(
+                seos_characteristic->secure_messaging,
+                seos_characteristic->credential,
+                apdu,
+                bit_buffer_get_size_bytes(attribute_value) - 1,
+                payload,
+                seos_characteristic_sm_event,
+                seos_characteristic->seos);
         } else {
             uint8_t no_sm[] = {0x69, 0x88};
             bit_buffer_append_bytes(payload, no_sm, sizeof(no_sm));
