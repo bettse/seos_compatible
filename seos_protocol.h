@@ -70,7 +70,40 @@ bool seos_emulator_general_authenticate_2(
     AuthParameters* params,
     BitBuffer* tx_buffer);
 
-/* Reader side. */
+/* Reader side.
+ *
+ * The answers a card gives, read from a buffer and a length. Kept apart from
+ * the poller so the shape of a response can be checked without a card, and so
+ * a malformed one is refused in one place rather than at each call site. */
+
+/* The status word a response ends with. False if it is too short to carry
+ * one, which is the case a step back from the end would otherwise miss. */
+bool seos_response_status(const uint8_t* data, size_t len, uint16_t* status_word);
+
+/* The card's challenge, from the answer to the first authenticate command. */
+bool seos_parse_ga1_response(
+    const uint8_t* data,
+    size_t len,
+    uint8_t* rnd_icc,
+    size_t rnd_icc_len);
+
+/* The card's cryptogram, from the answer to the second. `cryptogram` points
+ * into `data`, and its length is reported rather than assumed: the caller
+ * decides which lengths it can verify. */
+bool seos_parse_ga2_response(
+    const uint8_t* data,
+    size_t len,
+    const uint8_t** cryptogram,
+    size_t* cryptogram_len);
+
+/* The credential, from an unwrapped read answer. */
+bool seos_parse_sio_response(
+    const uint8_t* data,
+    size_t len,
+    uint8_t* sio,
+    size_t sio_cap,
+    size_t* sio_len);
+
 bool seos_reader_select_adf_response(
     BitBuffer* rx_buffer,
     size_t offset,
@@ -81,6 +114,9 @@ void seos_reader_generate_cryptogram(
     SeosCredential* credential,
     AuthParameters* params,
     uint8_t* cryptogram);
+
+/* Length of the cryptogram a card answers the second authenticate with. */
+#define SEOS_CARD_CRYPTOGRAM_LEN 40
 
 bool seos_reader_verify_cryptogram(AuthParameters* params, const uint8_t* cryptogram);
 

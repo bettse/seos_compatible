@@ -4,6 +4,7 @@
 
 #include "keys.h"
 #include "cmac.h"
+#include "seos_tlv.h"
 
 #define TAG "SeosProtocol"
 
@@ -513,6 +514,80 @@ bool seos_reader_verify_cryptogram(AuthParameters* params, const uint8_t* crypto
     memcpy(params->rNonce, clear + 8 + 8, sizeof(params->rNonce));
     return true;
 }
+/* Data objects the authenticate answers are built from. */
+#define DO_DYNAMIC_AUTH  0x7c
+#define DO_CARD_CHALLENGE 0x81
+#define DO_CARD_RESPONSE  0x82
+
+/* The credential the card holds, named by its file identifier. */
+#define SIO_FILE_TAG 0xff00
+
+bool seos_response_status(const uint8_t* data, size_t len, uint16_t* status_word) {
+    if(len < sizeof(uint16_t)) return false;
+
+    *status_word = (uint16_t)((data[len - 2] << 8) | data[len - 1]);
+    return true;
+}
+
+/* Reads the object a dynamic authentication wrapper carries. */
+static bool read_authenticate_object(
+    const uint8_t* data,
+    size_t len,
+    uint16_t expected_tag,
+    const uint8_t** value,
+    size_t* value_len) {
+    SeosTlvObject wrapper;
+    if(!seos_tlv_read_at(data, len, 0, &wrapper) || wrapper.tag != DO_DYNAMIC_AUTH) return false;
+
+    SeosTlvCursor inner;
+    SeosTlvObject object;
+    seos_tlv_cursor_init(&inner, wrapper.value, wrapper.value_len);
+    if(!seos_tlv_read(&inner, &object) || object.tag != expected_tag) return false;
+
+    *value = object.value;
+    *value_len = object.value_len;
+    return true;
+}
+
+bool seos_parse_ga1_response(
+    const uint8_t* data,
+    size_t len,
+    uint8_t* rnd_icc,
+    size_t rnd_icc_len) {
+    const uint8_t* value = NULL;
+    size_t value_len = 0;
+    if(!read_authenticate_object(data, len, DO_CARD_CHALLENGE, &value, &value_len)) return false;
+
+    /* A challenge of another length is not the one the session is built on. */
+    if(value_len != rnd_icc_len) return false;
+
+    memcpy(rnd_icc, value, value_len);
+    return true;
+}
+
+bool seos_parse_ga2_response(
+    const uint8_t* data,
+    size_t len,
+    const uint8_t** cryptogram,
+    size_t* cryptogram_len) {
+    return read_authenticate_object(data, len, DO_CARD_RESPONSE, cryptogram, cryptogram_len);
+}
+
+bool seos_parse_sio_response(
+    const uint8_t* data,
+    size_t len,
+    uint8_t* sio,
+    size_t sio_cap,
+    size_t* sio_len) {
+    SeosTlvObject object;
+    if(!seos_tlv_read_at(data, len, 0, &object) || object.tag != SIO_FILE_TAG) return false;
+    if(object.value_len > sio_cap) return false;
+
+    memcpy(sio, object.value, object.value_len);
+    *sio_len = object.value_len;
+    return true;
+}
+
 bool seos_reader_select_adf_response(
     BitBuffer* rx_buffer,
     size_t offset,

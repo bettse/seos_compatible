@@ -134,26 +134,17 @@ bool seos_reader_request_sio(SeosReader* seos_reader) {
     if(ok) {
         seos_log_bitbuffer(TAG, "NFC response(clear)", assembled);
 
-        // fileId(2) then the length byte
-        size_t len = bit_buffer_get_size_bytes(assembled);
-        if(len < 3) {
-            FURI_LOG_W(TAG, "SIO response too short");
+        size_t sio_len = 0;
+        if(!seos_parse_sio_response(
+               bit_buffer_get_data(assembled),
+               bit_buffer_get_size_bytes(assembled),
+               seos_reader->credential->sio,
+               sizeof(seos_reader->credential->sio),
+               &sio_len)) {
+            FURI_LOG_W(TAG, "No credential in the read answer");
             ok = false;
         } else {
-            size_t sio_len = bit_buffer_get_byte(assembled, 2);
-            size_t sio_offset = 3;
-            /* A length of 128 or more arrives in the long form. */
-            if(sio_len == 0x81 && len > 3) {
-                sio_len = bit_buffer_get_byte(assembled, 3);
-                sio_offset = 4;
-            }
-            if(sio_len > sizeof(seos_reader->credential->sio) || len < sio_offset + sio_len) {
-                FURI_LOG_W(TAG, "SIO length does not fit the response");
-                ok = false;
-            } else {
-                seos_reader->credential->sio_len = sio_len;
-                memcpy(seos_reader->credential->sio, bit_buffer_get_data(assembled) + 3, sio_len);
-            }
+            seos_reader->credential->sio_len = sio_len;
         }
     }
 
@@ -202,11 +193,10 @@ bool seos_reader_write_sio(SeosReader* seos_reader) {
     bit_buffer_reset(tx_buffer);
 
     seos_log_bitbuffer(TAG, "NFC response", rx_buffer);
-    if(memcmp(
-           bit_buffer_get_data(rx_buffer) + bit_buffer_get_size_bytes(rx_buffer) -
-               sizeof(SEOS_SW_SUCCESS),
-           SEOS_SW_SUCCESS,
-           sizeof(SEOS_SW_SUCCESS)) != 0) {
+    uint16_t status_word = 0;
+    if(!seos_response_status(
+           bit_buffer_get_data(rx_buffer), bit_buffer_get_size_bytes(rx_buffer), &status_word) ||
+       status_word != SEOS_SW_SUCCESS_VALUE) {
         FURI_LOG_W(TAG, "Non-success response");
         return false;
     }
@@ -235,16 +225,16 @@ NfcCommand seos_reader_select_aid(SeosReader* seos_reader) {
 
     // TODO: validate response
 
-    if(memcmp(
-           bit_buffer_get_data(rx_buffer) + bit_buffer_get_size_bytes(rx_buffer) -
-               sizeof(SEOS_SW_SUCCESS),
-           SEOS_SW_SUCCESS,
-           sizeof(SEOS_SW_SUCCESS)) != 0) {
+    uint16_t status_word = 0;
+    if(!seos_response_status(
+           bit_buffer_get_data(rx_buffer), bit_buffer_get_size_bytes(rx_buffer), &status_word) ||
+       status_word != SEOS_SW_SUCCESS_VALUE) {
         FURI_LOG_W(TAG, "Non-success response");
         return NfcCommandStop;
     }
 
-    if(memcmp(bit_buffer_get_data(rx_buffer), SEOS_APPLET_FCI, sizeof(SEOS_APPLET_FCI)) != 0) {
+    if(bit_buffer_get_size_bytes(rx_buffer) < sizeof(SEOS_APPLET_FCI) ||
+       memcmp(bit_buffer_get_data(rx_buffer), SEOS_APPLET_FCI, sizeof(SEOS_APPLET_FCI)) != 0) {
         FURI_LOG_W(TAG, "Unexpected select AID response");
         return NfcCommandStop;
     }
@@ -274,11 +264,10 @@ NfcCommand seos_reader_select_adf(SeosReader* seos_reader) {
         return NfcCommandStop;
     }
     seos_log_bitbuffer(TAG, "NFC response", rx_buffer);
-    if(memcmp(
-           bit_buffer_get_data(rx_buffer) + bit_buffer_get_size_bytes(rx_buffer) -
-               sizeof(SEOS_SW_SUCCESS),
-           SEOS_SW_SUCCESS,
-           sizeof(SEOS_SW_SUCCESS)) != 0) {
+    uint16_t status_word = 0;
+    if(!seos_response_status(
+           bit_buffer_get_data(rx_buffer), bit_buffer_get_size_bytes(rx_buffer), &status_word) ||
+       status_word != SEOS_SW_SUCCESS_VALUE) {
         FURI_LOG_W(TAG, "Non-success response");
         return NfcCommandStop;
     }
@@ -309,25 +298,22 @@ NfcCommand seos_reader_general_authenticate_1(SeosReader* seos_reader) {
     bit_buffer_reset(tx_buffer);
 
     seos_log_bitbuffer(TAG, "NFC response", rx_buffer);
-    if(memcmp(
-           bit_buffer_get_data(rx_buffer) + bit_buffer_get_size_bytes(rx_buffer) -
-               sizeof(SEOS_SW_SUCCESS),
-           SEOS_SW_SUCCESS,
-           sizeof(SEOS_SW_SUCCESS)) != 0) {
+    uint16_t status_word = 0;
+    if(!seos_response_status(
+           bit_buffer_get_data(rx_buffer), bit_buffer_get_size_bytes(rx_buffer), &status_word) ||
+       status_word != SEOS_SW_SUCCESS_VALUE) {
         FURI_LOG_W(TAG, "Non-success response");
         return NfcCommandStop;
     }
 
-    // 7c0a8108018cde7d6049edb09000
-
-    uint8_t expected_header[] = {0x7c, 0x0a, 0x81, 0x08};
-    const uint8_t* rx_data = bit_buffer_get_data(rx_buffer);
-    if(memcmp(rx_data, expected_header, sizeof(expected_header)) != 0) {
-        FURI_LOG_W(TAG, "Invalid response");
+    if(!seos_parse_ga1_response(
+           bit_buffer_get_data(rx_buffer),
+           bit_buffer_get_size_bytes(rx_buffer),
+           seos_reader->params.rndICC,
+           sizeof(seos_reader->params.rndICC))) {
+        FURI_LOG_W(TAG, "No challenge in the authenticate answer");
         return NfcCommandStop;
     }
-
-    memcpy(seos_reader->params.rndICC, rx_data + 4, 8);
 
     return ret;
 }
@@ -360,31 +346,35 @@ NfcCommand seos_reader_general_authenticate_2(SeosReader* seos_reader) {
     bit_buffer_reset(tx_buffer);
 
     seos_log_bitbuffer(TAG, "NFC response", rx_buffer);
-    if(memcmp(
-           bit_buffer_get_data(rx_buffer) + bit_buffer_get_size_bytes(rx_buffer) -
-               sizeof(SEOS_SW_SUCCESS),
-           SEOS_SW_SUCCESS,
-           sizeof(SEOS_SW_SUCCESS)) != 0) {
+    uint16_t status_word = 0;
+    if(!seos_response_status(
+           bit_buffer_get_data(rx_buffer), bit_buffer_get_size_bytes(rx_buffer), &status_word) ||
+       status_word != SEOS_SW_SUCCESS_VALUE) {
         FURI_LOG_W(TAG, "Non-success response");
         return NfcCommandStop;
     }
 
-    const uint8_t* rx_data = bit_buffer_get_data(rx_buffer);
-    if(rx_data[0] != 0x7C || rx_data[2] != 0x82) {
-        FURI_LOG_W(TAG, "Invalid rx_data");
+    const uint8_t* card_cryptogram = NULL;
+    size_t card_cryptogram_len = 0;
+    if(!seos_parse_ga2_response(
+           bit_buffer_get_data(rx_buffer),
+           bit_buffer_get_size_bytes(rx_buffer),
+           &card_cryptogram,
+           &card_cryptogram_len)) {
+        FURI_LOG_W(TAG, "No cryptogram in the authenticate answer");
         return NfcCommandStop;
     }
 
-    if(rx_data[3] == 40) {
-        if(!seos_reader_verify_cryptogram(&seos_reader->params, rx_data + 4)) {
-            FURI_LOG_W(TAG, "Card cryptogram failed verification");
-            return NfcCommandStop;
-        }
-        FURI_LOG_I(TAG, "Authenticated successfully with key no %d", seos_reader->params.key_no);
-    } else {
-        FURI_LOG_W(TAG, "Unhandled card cryptogram size %d", rx_data[3]);
-        ret = NfcCommandStop;
+    if(card_cryptogram_len != SEOS_CARD_CRYPTOGRAM_LEN) {
+        FURI_LOG_W(TAG, "Unhandled card cryptogram size %d", card_cryptogram_len);
+        return NfcCommandStop;
     }
+
+    if(!seos_reader_verify_cryptogram(&seos_reader->params, card_cryptogram)) {
+        FURI_LOG_W(TAG, "Card cryptogram failed verification");
+        return NfcCommandStop;
+    }
+    FURI_LOG_I(TAG, "Authenticated successfully with key no %d", seos_reader->params.key_no);
 
     seos_reader->secure_messaging = secure_messaging_alloc(&seos_reader->params);
     if(!seos_reader->secure_messaging) {

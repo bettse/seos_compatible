@@ -32,6 +32,7 @@ HOST_TEST_SOURCES := \
 	$(HOST_TESTS)/test_kdf.c \
 	$(HOST_TESTS)/test_secure_messaging.c \
 	$(HOST_TESTS)/test_protocol.c \
+	$(HOST_TESTS)/test_reader_parse.c \
 	$(HOST_TESTS)/test_sm_command.c \
 	$(HOST_TESTS)/test_ble_policy.c \
 	$(HOST_TESTS)/test_ble_framing.c \
