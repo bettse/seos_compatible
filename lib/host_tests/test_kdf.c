@@ -118,6 +118,44 @@ static MunitResult test_nonces_are_random(const MunitParameter p[], void* d) {
     return MUNIT_OK;
 }
 
+/* The cipher wrappers each end up at the same place; a round trip through
+ * every one shows they agree on direction and key. */
+static MunitResult test_cipher_wrappers(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    uint8_t key[16];
+    for(size_t i = 0; i < sizeof(key); i++)
+        key[i] = (uint8_t)(0x90 + i);
+
+    uint8_t clear[32];
+    for(size_t i = 0; i < sizeof(clear); i++)
+        clear[i] = (uint8_t)(i * 11 + 3);
+
+    uint8_t encrypted[32];
+    uint8_t recovered[32];
+
+    munit_assert_true(seos_worker_aes_encrypt(key, sizeof(clear), clear, encrypted));
+    munit_assert_memory_not_equal(sizeof(clear), encrypted, clear);
+    munit_assert_true(seos_worker_aes_decrypt(key, sizeof(clear), encrypted, recovered));
+    munit_assert_memory_equal(sizeof(clear), recovered, clear);
+
+    munit_assert_true(seos_worker_des_encrypt(key, sizeof(clear), clear, encrypted));
+    munit_assert_memory_not_equal(sizeof(clear), encrypted, clear);
+    munit_assert_true(seos_worker_des_decrypt(key, sizeof(clear), encrypted, recovered));
+    munit_assert_memory_equal(sizeof(clear), recovered, clear);
+
+    /* A length that is not whole blocks is refused rather than half done. */
+    munit_assert_false(seos_worker_aes_encrypt(key, 17, clear, encrypted));
+    munit_assert_false(seos_worker_des_encrypt(key, 5, clear, encrypted));
+
+    /* And a cipher nobody agreed on is refused by name. */
+    munit_assert_size(seos_cipher_block_size(0x77), ==, 0);
+    munit_assert_false(seos_cipher_encrypt(0x77, key, sizeof(clear), clear, encrypted));
+    munit_assert_false(seos_cipher_decrypt(0x77, key, sizeof(clear), clear, recovered));
+    munit_assert_false(seos_cipher_cmac(0x77, key, sizeof(key), clear, sizeof(clear), encrypted));
+    return MUNIT_OK;
+}
+
 static MunitTest test_kdf_cases[] = {
     {(char*)"/keys/aes-sha256", test_aes_sha256_keys, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
     {(char*)"/keys/des-sha1", test_des_sha1_keys, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
@@ -139,6 +177,7 @@ static MunitTest test_kdf_cases[] = {
      NULL,
      MUNIT_TEST_OPTION_NONE,
      NULL},
+    {(char*)"/cipher/wrappers", test_cipher_wrappers, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
     {(char*)"/nonce/random", test_nonces_are_random, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
     {NULL, NULL, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
 };

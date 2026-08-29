@@ -35,7 +35,8 @@ HOST_TEST_SOURCES := \
 	$(HOST_TESTS)/test_ble_policy.c \
 	$(HOST_TESTS)/test_ble_framing.c \
 	$(HOST_TESTS)/test_session_vectors.c \
-	$(HOST_TESTS)/test_emulated_card.c
+	$(HOST_TESTS)/test_emulated_card.c \
+	$(HOST_TESTS)/test_select_adf.c
 
 HOST_TEST_APP_SOURCES := \
 	cmac.c \
@@ -47,7 +48,12 @@ HOST_TEST_APP_SOURCES := \
 	ble_shared/seos_ble_framing.c \
 	memmem.c
 
-.PHONY: test-host clean-host
+# Coverage is measured over the app's own sources only: the shims and the test
+# files are scaffolding, and counting them would flatter the number.
+COVERAGE_DIR := build/coverage
+COVERAGE_FLAGS := -fprofile-instr-generate -fcoverage-mapping
+
+.PHONY: test-host coverage clean-host
 
 test-host:
 	@mkdir -p build/host_tests
@@ -56,5 +62,20 @@ test-host:
 		-o build/host_tests/seos_tests $(HOST_TEST_LDFLAGS)
 	./build/host_tests/seos_tests
 
+coverage:
+	@mkdir -p $(COVERAGE_DIR)
+	$(CC) $(HOST_TEST_CFLAGS) $(COVERAGE_FLAGS) \
+		$(HOST_TEST_SUPPORT) $(HOST_TEST_SOURCES) $(HOST_TEST_APP_SOURCES) \
+		-o $(COVERAGE_DIR)/seos_tests $(HOST_TEST_LDFLAGS)
+	@cd $(COVERAGE_DIR) && LLVM_PROFILE_FILE=seos.profraw ./seos_tests > /dev/null
+	@xcrun llvm-profdata merge -sparse $(COVERAGE_DIR)/seos.profraw -o $(COVERAGE_DIR)/seos.profdata
+	@xcrun llvm-cov report $(COVERAGE_DIR)/seos_tests \
+		-instr-profile=$(COVERAGE_DIR)/seos.profdata $(HOST_TEST_APP_SOURCES)
+
+coverage-detail:
+	@xcrun llvm-cov show $(COVERAGE_DIR)/seos_tests \
+		-instr-profile=$(COVERAGE_DIR)/seos.profdata $(HOST_TEST_APP_SOURCES) \
+		-show-line-counts-or-regions | less -R
+
 clean-host:
-	rm -rf build/host_tests
+	rm -rf build/host_tests $(COVERAGE_DIR)

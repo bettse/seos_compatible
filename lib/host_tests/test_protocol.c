@@ -313,6 +313,37 @@ static MunitResult test_select_response_varies(const MunitParameter p[], void* d
     return MUNIT_OK;
 }
 
+/* The authenticate command is told apart by its header and body, never by the
+ * keyset number, which is a parameter a reader chooses. */
+static MunitResult test_authenticate_matchers(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    uint8_t built[SEOS_GENERAL_AUTHENTICATE_1_LEN];
+
+    for(uint8_t key_no = 0; key_no < 4; key_no++) {
+        seos_build_general_authenticate_1(key_no, built);
+
+        uint8_t expected[] = {0x00, 0x87, 0x00, key_no, 0x04, 0x7c, 0x02, 0x81, 0x00, 0x00};
+        munit_assert_memory_equal(sizeof(expected), built, expected);
+
+        munit_assert_true(seos_is_general_authenticate_1(built, sizeof(built)));
+        munit_assert_false(seos_is_general_authenticate_2(built, sizeof(built)));
+    }
+
+    /* The second step shares the header but carries a cryptogram instead. */
+    uint8_t step_two[] = {0x00, 0x87, 0x00, 0x02, 0x2c, 0x7c, 0x2a, 0x82, 0x28};
+    munit_assert_true(seos_is_general_authenticate_2(step_two, sizeof(step_two)));
+    munit_assert_false(seos_is_general_authenticate_1(step_two, sizeof(step_two)));
+
+    /* Neither matches another command, or a frame too short to tell. */
+    uint8_t other[] = {0x00, 0xa4, 0x04, 0x00, 0x04, 0x7c, 0x02, 0x81, 0x00, 0x00};
+    munit_assert_false(seos_is_general_authenticate_1(other, sizeof(other)));
+    munit_assert_false(seos_is_general_authenticate_2(other, sizeof(other)));
+    munit_assert_false(seos_is_general_authenticate_1(step_two, 3));
+    munit_assert_false(seos_is_general_authenticate_2(step_two, 3));
+    return MUNIT_OK;
+}
+
 static MunitTest test_protocol_cases[] = {
     {(char*)"/shill/select", test_shill_select_looks_real, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
     {(char*)"/shill/authenticate",
@@ -323,6 +354,12 @@ static MunitTest test_protocol_cases[] = {
      NULL},
     {(char*)"/select-adf/varies",
      test_select_response_varies,
+     NULL,
+     NULL,
+     MUNIT_TEST_OPTION_NONE,
+     NULL},
+    {(char*)"/authenticate/matchers",
+     test_authenticate_matchers,
      NULL,
      NULL,
      MUNIT_TEST_OPTION_NONE,
