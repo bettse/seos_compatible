@@ -138,18 +138,58 @@ static void answer_status(SecureMessaging* secure_messaging, BitBuffer* tx, uint
     seos_sm_append_status(tx, status_word);
 }
 
-/* Reads the single tag a tag list names.
+/* Reads one tag, which is one or two octets.
  *
- * Only one- and two-byte tags are allowed, and the list must name exactly one
- * object and nothing else. */
-static bool parse_tag_list(const uint8_t* data, size_t data_len, uint16_t* tag) {
-    if(data_len < 3 || data[0] != DO_TAG_LIST) return false;
+ * A first octet whose low five bits are all set says the tag continues into
+ * the next, whose top bit says whether that one continues again. Only two
+ * octets are allowed here. */
+static bool read_tag(const uint8_t* data, size_t data_len, size_t* offset, uint16_t* tag) {
+    if(*offset >= data_len) return false;
 
-    size_t tag_len = data[1];
-    if(tag_len < 1 || tag_len > 2 || data_len != 2 + tag_len) return false;
+    uint8_t first = data[*offset];
+    if((first & 0x1f) != 0x1f) {
+        *tag = first;
+        *offset += 1;
+        return true;
+    }
 
-    *tag = tag_len == 1 ? data[2] : (uint16_t)((data[2] << 8) | data[3]);
+    if(*offset + 1 >= data_len) return false;
+    uint8_t second = data[*offset + 1];
+    if((second & 0x80) != 0) return false; /* a third octet, which we do not serve */
+
+    *tag = (uint16_t)((first << 8) | second);
+    *offset += 2;
     return true;
+}
+
+/* Reads the tags a request names.
+ *
+ * A tag list holds one tag. An extended header list holds a run of them, which
+ * a reader uses to ask for several objects at once; the tags are simply
+ * concatenated, with no length between them. */
+static bool parse_requested_tags(
+    const uint8_t* data,
+    size_t data_len,
+    uint16_t* tags,
+    size_t tags_capacity,
+    size_t* tag_count) {
+    if(data_len < 3) return false;
+    if(data[0] != DO_TAG_LIST && data[0] != DO_EXTENDED_HEADER_LIST) return false;
+
+    size_t body_len = data[1];
+    if(body_len == 0 || data_len != 2 + body_len) return false;
+
+    size_t offset = 2;
+    *tag_count = 0;
+    while(offset < 2 + body_len) {
+        if(*tag_count == tags_capacity) return false;
+        if(!read_tag(data, 2 + body_len, &offset, &tags[*tag_count])) return false;
+        (*tag_count)++;
+    }
+
+    /* A tag list names exactly one object. */
+    if(data[0] == DO_TAG_LIST && *tag_count != 1) return false;
+    return *tag_count > 0;
 }
 
 /* Stores an object a write command carries.
@@ -229,24 +269,32 @@ bool seos_sm_command_handle(
         return true;
     }
 
-    uint16_t tag = 0;
-    if(!parse_tag_list(bit_buffer_get_data(message), bit_buffer_get_size_bytes(message), &tag)) {
-        uint8_t first = bit_buffer_get_size_bytes(message) > 0 ? bit_buffer_get_byte(message, 0) :
-                                                                 0;
-        if(first == DO_EXTENDED_HEADER_LIST) {
-            FURI_LOG_W(TAG, "Extended header lists are not supported");
-        } else {
-            FURI_LOG_W(TAG, "Malformed data field");
-        }
+    uint16_t tags[SEOS_SM_MAX_REQUESTED_TAGS];
+    size_t tag_count = 0;
+    if(!parse_requested_tags(
+           bit_buffer_get_data(message),
+           bit_buffer_get_size_bytes(message),
+           tags,
+           SEOS_SM_MAX_REQUESTED_TAGS,
+           &tag_count)) {
+        FURI_LOG_W(TAG, "Malformed data field");
         answer_status(secure_messaging, tx, SEOS_SW_WRONG_DATA);
         bit_buffer_free(message);
         return true;
     }
 
-    if(tag != SIO_FILE_TAG) {
+    /* The only object this card holds is the credential, so a request naming
+     * anything else contributes nothing to the answer. */
+    bool wants_credential = false;
+    for(size_t i = 0; i < tag_count; i++) {
+        if(tags[i] == SIO_FILE_TAG) wants_credential = true;
+    }
+
+    uint16_t tag = SIO_FILE_TAG;
+    if(!wants_credential) {
         /* An object we do not hold is not an error: the answer simply carries
          * no data. */
-        FURI_LOG_D(TAG, "No object with tag %04x", tag);
+        FURI_LOG_D(TAG, "No object we hold was named");
         answer_status(secure_messaging, tx, SEOS_SW_SUCCESS_VALUE);
         bit_buffer_free(message);
         return true;

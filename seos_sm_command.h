@@ -27,6 +27,10 @@ extern const uint8_t SEOS_GET_RESPONSE[SEOS_GET_RESPONSE_LEN];
 /* Largest response the handler will assemble before splitting it. */
 #define SEOS_SM_RESPONSE_MAX 256
 
+/* Tags one request may name. A reader asking for more than a handful at once
+ * is asking for objects this card does not hold. */
+#define SEOS_SM_MAX_REQUESTED_TAGS 8
+
 /* Bytes a single frame carries, status word included. Every transport here
  * works to the same budget; anything longer is chained. */
 #define SEOS_SM_MAX_FRAME 128

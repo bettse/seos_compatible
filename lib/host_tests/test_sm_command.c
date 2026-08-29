@@ -225,7 +225,8 @@ static MunitResult test_short_plaintext(const MunitParameter p[], void* d) {
     return MUNIT_OK;
 }
 
-/* An extended header list is refused rather than answered wrongly. */
+/* A reader asking with an extended header list gets the same answer as one
+ * asking with a tag list. */
 static MunitResult test_extended_header_list(const MunitParameter p[], void* d) {
     (void)p;
     (void)d;
@@ -234,18 +235,57 @@ static MunitResult test_extended_header_list(const MunitParameter p[], void* d) 
     uint8_t recovered[BUFFER_CAPACITY];
     EventLog log = {0};
 
-    exchange(&credential, request, sizeof(request), recovered, sizeof(recovered), &log);
-    munit_assert_uint16(last_status_word, ==, SEOS_SW_WRONG_DATA);
+    size_t len =
+        exchange(&credential, request, sizeof(request), recovered, sizeof(recovered), &log);
+
+    munit_assert_size(len, ==, 3 + credential.sio_len);
+    munit_assert_memory_equal(credential.sio_len, recovered + 3, credential.sio);
+    munit_assert_uint(log.sio_requested, ==, 1);
+    return MUNIT_OK;
+}
+
+/* Several tags at once, concatenated with nothing between them. Only one of
+ * them names something this card holds. */
+static MunitResult test_extended_header_list_many(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    SeosCredential credential = credential_with_sio(12);
+    uint8_t request[] = {0x4d, 0x05, 0xff, 0x41, 0xff, 0x00, 0x41};
+    uint8_t recovered[BUFFER_CAPACITY];
+    EventLog log = {0};
+
+    size_t len =
+        exchange(&credential, request, sizeof(request), recovered, sizeof(recovered), &log);
+
+    munit_assert_size(len, ==, 3 + credential.sio_len);
+    munit_assert_uint(log.sio_requested, ==, 1);
+    return MUNIT_OK;
+}
+
+/* A list naming only objects we do not hold is answered with no data. */
+static MunitResult test_extended_header_list_unknown(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    SeosCredential credential = credential_with_sio(8);
+    uint8_t request[] = {0x4d, 0x04, 0xff, 0x41, 0xff, 0x42};
+    uint8_t recovered[BUFFER_CAPACITY];
+    EventLog log = {0};
+
+    size_t len =
+        exchange(&credential, request, sizeof(request), recovered, sizeof(recovered), &log);
+
+    munit_assert_size(len, ==, 0);
+    munit_assert_uint16(last_status_word, ==, SEOS_SW_SUCCESS_VALUE);
     munit_assert_uint(log.sio_requested, ==, 0);
     return MUNIT_OK;
 }
 
-/* A tag list naming more than one object is not a tag list we can serve. */
-static MunitResult test_multiple_tags(const MunitParameter p[], void* d) {
+/* A tag list still names exactly one object. */
+static MunitResult test_tag_list_names_one(const MunitParameter p[], void* d) {
     (void)p;
     (void)d;
     SeosCredential credential = credential_with_sio(8);
-    uint8_t request[] = {0x5c, 0x04, 0xff, 0x00, 0xff, 0x01};
+    uint8_t request[] = {0x5c, 0x04, 0xff, 0x00, 0xff, 0x41};
     uint8_t recovered[BUFFER_CAPACITY];
     EventLog log = {0};
 
@@ -579,7 +619,24 @@ static MunitTest test_sm_command_cases[] = {
      NULL,
      MUNIT_TEST_OPTION_NONE,
      NULL},
-    {(char*)"/sio/multiple-tags", test_multiple_tags, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
+    {(char*)"/sio/extended-header-list-many",
+     test_extended_header_list_many,
+     NULL,
+     NULL,
+     MUNIT_TEST_OPTION_NONE,
+     NULL},
+    {(char*)"/sio/extended-header-list-unknown",
+     test_extended_header_list_unknown,
+     NULL,
+     NULL,
+     MUNIT_TEST_OPTION_NONE,
+     NULL},
+    {(char*)"/sio/tag-list-names-one",
+     test_tag_list_names_one,
+     NULL,
+     NULL,
+     MUNIT_TEST_OPTION_NONE,
+     NULL},
     {(char*)"/length/long-form-read",
      test_long_object_length,
      NULL,
