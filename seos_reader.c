@@ -10,9 +10,6 @@ static uint8_t select[] =
 static uint8_t SEOS_APPLET_FCI[] =
     {0x6F, 0x0C, 0x84, 0x0A, 0xA0, 0x00, 0x00, 0x04, 0x40, 0x00, 0x01, 0x01, 0x00, 0x01};
 
-static uint8_t general_authenticate_1[] =
-    {0x00, 0x87, 0x00, 0x01, 0x04, 0x7c, 0x02, 0x81, 0x00, 0x00};
-
 SeosReader* seos_reader_alloc(SeosCredential* credential, Iso14443_4aPoller* iso14443_4a_poller) {
     SeosReader* seos_reader = malloc(sizeof(SeosReader));
     memset(seos_reader, 0, sizeof(SeosReader));
@@ -89,8 +86,11 @@ bool seos_reader_request_sio(SeosReader* seos_reader) {
         bit_buffer_append_bytes(assembled, bit_buffer_get_data(rx_buffer), rx_len - 2);
 
         if(sw1 == 0x61) {
-            bit_buffer_append_bytes(
-                tx_buffer, (uint8_t*)SEOS_GET_RESPONSE, sizeof(SEOS_GET_RESPONSE));
+            /* Le is how much the card said is still waiting. */
+            uint8_t get_response[SEOS_GET_RESPONSE_LEN];
+            memcpy(get_response, SEOS_GET_RESPONSE, sizeof(get_response));
+            get_response[SEOS_GET_RESPONSE_LEN - 1] = sw2;
+            bit_buffer_append_bytes(tx_buffer, get_response, sizeof(get_response));
             continue;
         }
         if(sw1 == 0x90 && sw2 == 0x00) {
@@ -118,7 +118,13 @@ bool seos_reader_request_sio(SeosReader* seos_reader) {
             ok = false;
         } else {
             size_t sio_len = bit_buffer_get_byte(assembled, 2);
-            if(sio_len > sizeof(seos_reader->credential->sio) || len < 3 + sio_len) {
+            size_t sio_offset = 3;
+            /* A length of 128 or more arrives in the long form. */
+            if(sio_len == 0x81 && len > 3) {
+                sio_len = bit_buffer_get_byte(assembled, 3);
+                sio_offset = 4;
+            }
+            if(sio_len > sizeof(seos_reader->credential->sio) || len < sio_offset + sio_len) {
                 FURI_LOG_W(TAG, "SIO length does not fit the response");
                 ok = false;
             } else {
@@ -256,7 +262,8 @@ NfcCommand seos_reader_general_authenticate_1(SeosReader* seos_reader) {
     NfcCommand ret = NfcCommandContinue;
     Iso14443_4aError error;
 
-    general_authenticate_1[3] = seos_reader->params.key_no;
+    uint8_t general_authenticate_1[SEOS_GENERAL_AUTHENTICATE_1_LEN];
+    seos_build_general_authenticate_1(seos_reader->params.key_no, general_authenticate_1);
     bit_buffer_append_bytes(tx_buffer, general_authenticate_1, sizeof(general_authenticate_1));
     seos_log_bitbuffer(TAG, "NFC transmit", tx_buffer);
 

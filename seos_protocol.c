@@ -13,6 +13,45 @@ static uint8_t general_authenticate_1_response_header[] = {0x7c, 0x0a, 0x81, 0x0
 /* CLA, INS, P1 and the key number of the second authenticate command. */
 #define GENERAL_AUTHENTICATE_2_HEADER_LEN 4
 
+/* CLA, INS and P1 of the authenticate command. P2 is the keyset. */
+static const uint8_t general_authenticate_header[] = {0x00, 0x87, 0x00};
+
+/* The body of the first step: a request for the card's challenge. */
+static const uint8_t general_authenticate_1_body[] = {0x04, 0x7c, 0x02, 0x81, 0x00, 0x00};
+
+bool seos_is_general_authenticate_1(const uint8_t* apdu, size_t apdu_len) {
+    if(apdu_len < sizeof(general_authenticate_header) + sizeof(general_authenticate_1_body)) {
+        return false;
+    }
+    if(memcmp(apdu, general_authenticate_header, sizeof(general_authenticate_header)) != 0) {
+        return false;
+    }
+    return memcmp(
+               apdu + sizeof(general_authenticate_header) + 1,
+               general_authenticate_1_body,
+               sizeof(general_authenticate_1_body)) == 0;
+}
+
+bool seos_is_general_authenticate_2(const uint8_t* apdu, size_t apdu_len) {
+    if(apdu_len < GENERAL_AUTHENTICATE_2_HEADER_LEN) return false;
+    if(memcmp(apdu, general_authenticate_header, sizeof(general_authenticate_header)) != 0) {
+        return false;
+    }
+    /* The first step is told apart by its body, which this is not. */
+    return !seos_is_general_authenticate_1(apdu, apdu_len);
+}
+
+void seos_build_general_authenticate_1(
+    uint8_t key_no,
+    uint8_t out[SEOS_GENERAL_AUTHENTICATE_1_LEN]) {
+    memcpy(out, general_authenticate_header, sizeof(general_authenticate_header));
+    out[sizeof(general_authenticate_header)] = key_no;
+    memcpy(
+        out + sizeof(general_authenticate_header) + 1,
+        general_authenticate_1_body,
+        sizeof(general_authenticate_1_body));
+}
+
 void seos_emulator_select_aid(BitBuffer* tx_buffer, const uint8_t* aid, size_t aid_len) {
     FURI_LOG_D(TAG, "Select AID");
     bit_buffer_append_byte(tx_buffer, 0x6F); // FCI Template

@@ -10,15 +10,12 @@
 
 static uint8_t standard_seos_aid[] = {0xa0, 0x00, 0x00, 0x04, 0x40, 0x00, 0x01, 0x01, 0x00, 0x01};
 static uint8_t cd02[] = {0xcd, 0x02};
-static uint8_t general_authenticate_1[] =
-    {0x00, 0x87, 0x00, 0x01, 0x04, 0x7c, 0x02, 0x81, 0x00, 0x00};
 static uint8_t ga1_response[] = {0x7c, 0x0a, 0x81, 0x08};
 
 // Emulation
 
 static uint8_t select_header[] = {0x00, 0xa4, 0x04, 0x00};
 static uint8_t select_adf_header[] = {0x80, 0xa5, 0x04, 0x00};
-static uint8_t general_authenticate_2_header[] = {0x00, 0x87, 0x00, 0x01};
 
 int32_t seos_native_peripheral_task(void* context);
 
@@ -215,10 +212,10 @@ void seos_native_peripheral_process_message_cred(
             FURI_LOG_W(TAG, "Failed to match any ADF OID");
         }
 
-    } else if(memcmp(apdu, general_authenticate_1, sizeof(general_authenticate_1)) == 0) {
+    } else if(seos_is_general_authenticate_1(apdu, apdu_len)) {
         seos_emulator_general_authenticate_1(response, seos_native_peripheral->params);
         bit_buffer_append_bytes(response, (uint8_t*)SEOS_SW_SUCCESS, sizeof(SEOS_SW_SUCCESS));
-    } else if(memcmp(apdu, general_authenticate_2_header, sizeof(general_authenticate_2_header)) == 0) {
+    } else if(seos_is_general_authenticate_2(apdu, apdu_len)) {
         if(!seos_emulator_general_authenticate_2(
                apdu,
                apdu_len,
@@ -235,7 +232,7 @@ void seos_native_peripheral_process_message_cred(
         // Prepare for future communication
         seos_native_peripheral->secure_messaging =
             secure_messaging_alloc(&seos_native_peripheral->params);
-    } else if(memcmp(apdu, SEOS_GET_RESPONSE, sizeof(SEOS_GET_RESPONSE)) == 0) {
+    } else if(memcmp(apdu, SEOS_GET_RESPONSE, sizeof(SEOS_GET_RESPONSE) - 1) == 0) {
         if(seos_native_peripheral->secure_messaging) {
             seos_sm_command_get_response(
                 seos_native_peripheral->secure_messaging, SEOS_SM_MAX_FRAME, response);
@@ -316,7 +313,9 @@ void seos_native_peripheral_process_message_reader(
                seos_native_peripheral->credential,
                &seos_native_peripheral->params)) {
             // Craft response
-            general_authenticate_1[3] = seos_native_peripheral->params.key_no;
+            uint8_t general_authenticate_1[SEOS_GENERAL_AUTHENTICATE_1_LEN];
+            seos_build_general_authenticate_1(
+                seos_native_peripheral->params.key_no, general_authenticate_1);
             bit_buffer_append_bytes(
                 response, general_authenticate_1, sizeof(general_authenticate_1));
             seos_native_peripheral->phase = GENERAL_AUTHENTICATION_1;

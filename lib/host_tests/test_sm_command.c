@@ -507,6 +507,68 @@ static MunitResult test_matches_only_our_commands(const MunitParameter p[], void
     return MUNIT_OK;
 }
 
+/* A hundred-and-twenty-eight byte object needs the long form length. Written
+ * as a bare byte, 0x80 reads back as a length header. */
+static MunitResult test_long_object_length(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    SeosCredential credential = credential_with_sio(128);
+    uint8_t request[] = {0x5c, 0x02, 0xff, 0x00};
+    uint8_t recovered[BUFFER_CAPACITY];
+    EventLog log = {0};
+
+    size_t len =
+        exchange(&credential, request, sizeof(request), recovered, sizeof(recovered), &log);
+
+    /* Tag, then 81 80, then the object. */
+    munit_assert_size(len, ==, 4 + credential.sio_len);
+    munit_assert_uint8(recovered[0], ==, 0xff);
+    munit_assert_uint8(recovered[1], ==, 0x00);
+    munit_assert_uint8(recovered[2], ==, 0x81);
+    munit_assert_uint8(recovered[3], ==, 0x80);
+    munit_assert_memory_equal(credential.sio_len, recovered + 4, credential.sio);
+    return MUNIT_OK;
+}
+
+/* And a write carrying the long form is stored, not refused. */
+static MunitResult test_write_long_object_length(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    SeosCredential credential = credential_with_sio(0);
+    EventLog log = {0};
+
+    uint8_t written[128];
+    for(size_t i = 0; i < sizeof(written); i++)
+        written[i] = (uint8_t)(i ^ 0x5a);
+
+    uint8_t command[4 + sizeof(written)];
+    command[0] = 0xff;
+    command[1] = 0x00;
+    command[2] = 0x81;
+    command[3] = (uint8_t)sizeof(written);
+    memcpy(command + 4, written, sizeof(written));
+
+    uint8_t recovered[BUFFER_CAPACITY];
+    exchange_header = SEOS_SM_PUT_HEADER;
+    exchange(&credential, command, sizeof(command), recovered, sizeof(recovered), &log);
+    exchange_header = SEOS_SM_HEADER;
+
+    munit_assert_uint16(last_status_word, ==, SEOS_SW_SUCCESS_VALUE);
+    munit_assert_size(credential.sio_len, ==, sizeof(written));
+    munit_assert_memory_equal(sizeof(written), credential.sio, written);
+    return MUNIT_OK;
+}
+
+/* The chained continuation command carries an Le byte. */
+static MunitResult test_get_response_has_le(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    munit_assert_size(sizeof(SEOS_GET_RESPONSE), ==, 5);
+    munit_assert_uint8(SEOS_GET_RESPONSE[0], ==, 0x00);
+    munit_assert_uint8(SEOS_GET_RESPONSE[1], ==, 0xc0);
+    return MUNIT_OK;
+}
+
 static MunitTest test_sm_command_cases[] = {
     {(char*)"/sio/returned", test_returns_sio, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
     {(char*)"/sio/other-tag", test_ignores_other_tags, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
@@ -518,6 +580,24 @@ static MunitTest test_sm_command_cases[] = {
      MUNIT_TEST_OPTION_NONE,
      NULL},
     {(char*)"/sio/multiple-tags", test_multiple_tags, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
+    {(char*)"/length/long-form-read",
+     test_long_object_length,
+     NULL,
+     NULL,
+     MUNIT_TEST_OPTION_NONE,
+     NULL},
+    {(char*)"/length/long-form-write",
+     test_write_long_object_length,
+     NULL,
+     NULL,
+     MUNIT_TEST_OPTION_NONE,
+     NULL},
+    {(char*)"/chaining/get-response-le",
+     test_get_response_has_le,
+     NULL,
+     NULL,
+     MUNIT_TEST_OPTION_NONE,
+     NULL},
     {(char*)"/write/stores", test_write_stores_sio, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
     {(char*)"/write/bounds", test_write_bounds, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
     {(char*)"/write/unknown-tag", test_write_unknown_tag, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},

@@ -17,7 +17,7 @@ bool seos_sm_command_matches(const uint8_t* apdu, size_t apdu_len) {
     if(apdu[1] != INS_GET_DATA && apdu[1] != INS_PUT_DATA) return false;
     return apdu[2] == SEOS_SM_HEADER[2] && apdu[3] == SEOS_SM_HEADER[3];
 }
-const uint8_t SEOS_GET_RESPONSE[4] = {0x00, 0xc0, 0x00, 0x00};
+const uint8_t SEOS_GET_RESPONSE[SEOS_GET_RESPONSE_LEN] = {0x00, 0xc0, 0x00, 0x00, 0x00};
 
 /* Status word telling the reader how much of the response is still to come. */
 #define SEOS_SW_MORE_DATA 0x6100
@@ -29,6 +29,39 @@ const uint8_t SEOS_GET_RESPONSE[4] = {0x00, 0xc0, 0x00, 0x00};
  * refused rather than answered wrongly. */
 #define DO_TAG_LIST             0x5c
 #define DO_EXTENDED_HEADER_LIST 0x4d
+
+/* Writes a BER length. Values of 128 and above need the long form; written as
+ * a bare byte they would be read back as a length header. */
+static void append_ber_length(BitBuffer* out, size_t length) {
+    if(length < 0x80) {
+        bit_buffer_append_byte(out, (uint8_t)length);
+        return;
+    }
+    bit_buffer_append_byte(out, 0x81);
+    bit_buffer_append_byte(out, (uint8_t)length);
+}
+
+/* Reads a BER length, reporting where its value starts. */
+static bool read_ber_length(
+    const uint8_t* data,
+    size_t data_len,
+    size_t offset,
+    size_t* length,
+    size_t* value_offset) {
+    if(offset >= data_len) return false;
+
+    uint8_t first = data[offset];
+    if(first < 0x80) {
+        *length = first;
+        *value_offset = offset + 1;
+    } else if(first == 0x81 && offset + 1 < data_len) {
+        *length = data[offset + 1];
+        *value_offset = offset + 2;
+    } else {
+        return false;
+    }
+    return *value_offset + *length <= data_len;
+}
 
 void seos_sm_append_status(BitBuffer* tx, uint16_t status_word) {
     bit_buffer_append_byte(tx, (uint8_t)(status_word >> 8));
@@ -131,9 +164,10 @@ static bool store_object(SeosCredential* credential, const uint8_t* data, size_t
     }
 
     uint16_t tag = (uint16_t)((data[0] << 8) | data[1]);
-    size_t len = data[2];
-    if(tag != SIO_FILE_TAG || data_len < 3 + len) {
-        FURI_LOG_W(TAG, "Write names tag %04x with %d bytes", tag, len);
+    size_t len = 0;
+    size_t value_offset = 0;
+    if(tag != SIO_FILE_TAG || !read_ber_length(data, data_len, 2, &len, &value_offset)) {
+        FURI_LOG_W(TAG, "Write names tag %04x we cannot store", tag);
         return false;
     }
     if(len > sizeof(credential->sio)) {
@@ -141,7 +175,7 @@ static bool store_object(SeosCredential* credential, const uint8_t* data, size_t
         return false;
     }
 
-    memcpy(credential->sio, data + 3, len);
+    memcpy(credential->sio, data + value_offset, len);
     credential->sio_len = len;
     return true;
 }
@@ -224,7 +258,7 @@ bool seos_sm_command_handle(
 
     BitBuffer* sio_file = bit_buffer_alloc(SEOS_SM_RESPONSE_MAX);
     seos_sm_append_status(sio_file, tag);
-    bit_buffer_append_byte(sio_file, credential->sio_len);
+    append_ber_length(sio_file, credential->sio_len);
     bit_buffer_append_bytes(sio_file, credential->sio, credential->sio_len);
 
     seos_log_bitbuffer(TAG, "send(clear)", sio_file);

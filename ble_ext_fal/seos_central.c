@@ -10,9 +10,6 @@
 static uint8_t select_header[] = {0x00, 0xa4, 0x04, 0x00};
 static uint8_t standard_seos_aid[] = {0xa0, 0x00, 0x00, 0x04, 0x40, 0x00, 0x01, 0x01, 0x00, 0x01};
 static uint8_t select_adf_header[] = {0x80, 0xa5, 0x04, 0x00};
-static uint8_t general_authenticate_1[] =
-    {0x00, 0x87, 0x00, 0x01, 0x04, 0x7c, 0x02, 0x81, 0x00, 0x00};
-static uint8_t general_authenticate_2_header[] = {0x00, 0x87, 0x00, 0x01};
 
 SeosCentral* seos_central_alloc(Seos* seos) {
     SeosCentral* seos_central = malloc(sizeof(SeosCentral));
@@ -100,12 +97,12 @@ void seos_central_notify(void* context, const uint8_t* buffer, size_t buffer_len
         } else {
             FURI_LOG_W(TAG, "Failed to match any ADF OID");
         }
-    } else if(memcmp(apdu, general_authenticate_1, sizeof(general_authenticate_1)) == 0) {
+    } else if(seos_is_general_authenticate_1(apdu, apdu_len)) {
         seos_emulator_general_authenticate_1(response, seos_central->params);
 
         bit_buffer_append_bytes(response, (uint8_t*)SEOS_SW_SUCCESS, sizeof(SEOS_SW_SUCCESS));
         seos_central->phase = GENERAL_AUTHENTICATION_2;
-    } else if(memcmp(apdu, general_authenticate_2_header, sizeof(general_authenticate_2_header)) == 0) {
+    } else if(seos_is_general_authenticate_2(apdu, apdu_len)) {
         if(seos_emulator_general_authenticate_2(
                apdu, apdu_len, seos_central->credential, &seos_central->params, response)) {
             FURI_LOG_I(TAG, "Authenticated");
@@ -118,7 +115,7 @@ void seos_central_notify(void* context, const uint8_t* buffer, size_t buffer_len
             bit_buffer_reset(response);
         }
         seos_central->phase = REQUEST_SIO;
-    } else if(memcmp(apdu, SEOS_GET_RESPONSE, sizeof(SEOS_GET_RESPONSE)) == 0) {
+    } else if(memcmp(apdu, SEOS_GET_RESPONSE, sizeof(SEOS_GET_RESPONSE) - 1) == 0) {
         if(seos_central->secure_messaging) {
             seos_sm_command_get_response(
                 seos_central->secure_messaging, SEOS_SM_MAX_FRAME, response);

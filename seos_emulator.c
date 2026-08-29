@@ -20,9 +20,6 @@ static uint8_t OPERATION_SELECTOR_POST_RESET[] =
 static uint8_t DESFIRE_ISO_AID[] = {0xd2, 0x76, 0x00, 0x00, 0x85, 0x01, 0x00};
 
 static uint8_t select_adf_header[] = {0x80, 0xa5, 0x04, 0x00};
-static uint8_t general_authenticate_1[] =
-    {0x00, 0x87, 0x00, 0x01, 0x04, 0x7c, 0x02, 0x81, 0x00, 0x00};
-static uint8_t general_authenticate_2_header[] = {0x00, 0x87, 0x00, 0x01};
 
 SeosEmulator* seos_emulator_alloc(SeosCredential* credential) {
     SeosEmulator* seos_emulator = malloc(sizeof(SeosEmulator));
@@ -96,8 +93,13 @@ NfcCommand seos_worker_listener_inspect_reader(Seos* seos) {
     return ret;
 }
 
+/* Set when the branch that ran produced a complete response, status word and
+ * all, so the caller must not add one. */
+static bool seos_emulator_response_complete = false;
+
 NfcCommand seos_worker_listener_process_message(Seos* seos) {
     SeosEmulator* seos_emulator = seos->seos_emulator;
+    seos_emulator_response_complete = false;
     BitBuffer* tx_buffer = seos_emulator->tx_buffer;
     NfcCommand ret = NfcCommandContinue;
 
@@ -112,6 +114,7 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
 
     // + x to skip stuff before APDU
     const uint8_t* apdu = rx_data + offset;
+    const size_t apdu_len = bit_buffer_get_size_bytes(seos_emulator->rx_buffer) - offset;
 
     if(memcmp(apdu, select_header, sizeof(select_header)) == 0) {
         seos_emulator->credential->use_hardcoded = false;
@@ -186,9 +189,9 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
                 (uint8_t*)SEOS_SW_FILE_NOT_FOUND,
                 sizeof(SEOS_SW_FILE_NOT_FOUND));
         }
-    } else if(memcmp(apdu, general_authenticate_1, sizeof(general_authenticate_1)) == 0) {
+    } else if(seos_is_general_authenticate_1(apdu, apdu_len)) {
         seos_emulator_general_authenticate_1(seos_emulator->tx_buffer, seos_emulator->params);
-    } else if(memcmp(apdu, general_authenticate_2_header, sizeof(general_authenticate_2_header)) == 0) {
+    } else if(seos_is_general_authenticate_2(apdu, apdu_len)) {
         if(!seos_emulator_general_authenticate_2(
                apdu,
                bit_buffer_get_size_bytes(seos_emulator->rx_buffer),
@@ -202,14 +205,16 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
         view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventAuthenticated);
         // Prepare for future communication
         seos_emulator->secure_messaging = secure_messaging_alloc(&seos_emulator->params);
-    } else if(memcmp(apdu, SEOS_GET_RESPONSE, sizeof(SEOS_GET_RESPONSE)) == 0) {
+    } else if(memcmp(apdu, SEOS_GET_RESPONSE, sizeof(SEOS_GET_RESPONSE) - 1) == 0) {
+        seos_emulator_response_complete = true;
         if(seos_emulator->secure_messaging) {
             seos_sm_command_get_response(
                 seos_emulator->secure_messaging, SEOS_SM_MAX_FRAME, tx_buffer);
         } else {
             seos_sm_append_status(tx_buffer, SECURE_MESSAGING_SW_INCORRECT_DO);
         }
-    } else if(seos_sm_command_matches(apdu, sizeof(SEOS_SM_HEADER))) {
+    } else if(seos_sm_command_matches(apdu, apdu_len)) {
+        seos_emulator_response_complete = true;
         if(seos_emulator->secure_messaging) {
             size_t rx_len = bit_buffer_get_size_bytes(seos_emulator->rx_buffer);
             if(!seos_sm_command_handle(
@@ -282,16 +287,17 @@ NfcCommand seos_worker_listener_callback(NfcGenericEvent event, void* context) {
             ret = seos_worker_listener_inspect_reader(seos);
         }
 
-        if(bit_buffer_get_size_bytes(seos_emulator->tx_buffer) >
-           offset) { // contents belong iso framing
-
+        /* The plain command handlers append their data and leave the status
+         * word to us. The secure messaging ones answer in full, including a
+         * chaining or error status word that must not be written over. */
+        if(!seos_emulator_response_complete &&
+           bit_buffer_get_size_bytes(seos_emulator->tx_buffer) > offset) {
             uint8_t* statusword = (uint8_t*)bit_buffer_get_data(tx_buffer) +
                                   bit_buffer_get_size_bytes(tx_buffer) - sizeof(uint16_t);
-            if(memcmp(SEOS_SW_SUCCESS, statusword, sizeof(SEOS_SW_SUCCESS)) == 0) {
-                // no-op
-            } else if(memcmp(SEOS_SW_FILE_NOT_FOUND, statusword, sizeof(SEOS_SW_FILE_NOT_FOUND)) == 0) {
-                // no-op
-            } else {
+            bool has_status =
+                memcmp(SEOS_SW_SUCCESS, statusword, sizeof(SEOS_SW_SUCCESS)) == 0 ||
+                memcmp(SEOS_SW_FILE_NOT_FOUND, statusword, sizeof(SEOS_SW_FILE_NOT_FOUND)) == 0;
+            if(!has_status) {
                 bit_buffer_append_bytes(tx_buffer, SEOS_SW_SUCCESS, sizeof(SEOS_SW_SUCCESS));
             }
         }

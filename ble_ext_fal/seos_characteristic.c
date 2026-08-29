@@ -7,8 +7,6 @@
 #define TAG "SeosCharacteristic"
 
 static uint8_t standard_seos_aid[] = {0xa0, 0x00, 0x00, 0x04, 0x40, 0x00, 0x01, 0x01, 0x00, 0x01};
-static uint8_t general_authenticate_1[] =
-    {0x00, 0x87, 0x00, 0x01, 0x04, 0x7c, 0x02, 0x81, 0x00, 0x00};
 static uint8_t cd02[] = {0xcd, 0x02};
 
 static uint8_t ga1_response[] = {0x7c, 0x0a, 0x81, 0x08};
@@ -17,7 +15,6 @@ static uint8_t ga1_response[] = {0x7c, 0x0a, 0x81, 0x08};
 
 static uint8_t select_header[] = {0x00, 0xa4, 0x04, 0x00};
 static uint8_t select_adf_header[] = {0x80, 0xa5, 0x04, 0x00};
-static uint8_t general_authenticate_2_header[] = {0x00, 0x87, 0x00, 0x01};
 
 SeosCharacteristic* seos_characteristic_alloc(Seos* seos) {
     SeosCharacteristic* seos_characteristic = malloc(sizeof(SeosCharacteristic));
@@ -99,7 +96,9 @@ void seos_characteristic_reader_flow(
         if(seos_reader_select_adf_response(
                attribute_value, 1, seos_characteristic->credential, &seos_characteristic->params)) {
             // Craft response
-            general_authenticate_1[3] = seos_characteristic->params.key_no;
+            uint8_t general_authenticate_1[SEOS_GENERAL_AUTHENTICATE_1_LEN];
+            seos_build_general_authenticate_1(
+                seos_characteristic->params.key_no, general_authenticate_1);
             bit_buffer_append_bytes(
                 payload, general_authenticate_1, sizeof(general_authenticate_1));
             seos_characteristic->phase = GENERAL_AUTHENTICATION_1;
@@ -223,6 +222,7 @@ void seos_characteristic_cred_flow(
     BitBuffer* payload) {
     const uint8_t* data = bit_buffer_get_data(attribute_value);
     const uint8_t* apdu = data + 1; // Match name to nfc version for easier copying
+    const size_t apdu_len = bit_buffer_get_size_bytes(attribute_value) - 1;
 
     if(memcmp(apdu, select_header, sizeof(select_header)) == 0) {
         if(memcmp(apdu + sizeof(select_header) + 1, standard_seos_aid, sizeof(standard_seos_aid)) ==
@@ -249,10 +249,10 @@ void seos_characteristic_cred_flow(
             FURI_LOG_W(TAG, "Failed to match any ADF OID");
         }
 
-    } else if(memcmp(apdu, general_authenticate_1, sizeof(general_authenticate_1)) == 0) {
+    } else if(seos_is_general_authenticate_1(apdu, apdu_len)) {
         seos_emulator_general_authenticate_1(payload, seos_characteristic->params);
         bit_buffer_append_bytes(payload, (uint8_t*)SEOS_SW_SUCCESS, sizeof(SEOS_SW_SUCCESS));
-    } else if(memcmp(apdu, general_authenticate_2_header, sizeof(general_authenticate_2_header)) == 0) {
+    } else if(seos_is_general_authenticate_2(apdu, apdu_len)) {
         if(!seos_emulator_general_authenticate_2(
                apdu,
                bit_buffer_get_size_bytes(attribute_value),
@@ -269,7 +269,7 @@ void seos_characteristic_cred_flow(
         // Prepare for future communication
         seos_characteristic->secure_messaging =
             secure_messaging_alloc(&seos_characteristic->params);
-    } else if(memcmp(apdu, SEOS_GET_RESPONSE, sizeof(SEOS_GET_RESPONSE)) == 0) {
+    } else if(memcmp(apdu, SEOS_GET_RESPONSE, sizeof(SEOS_GET_RESPONSE) - 1) == 0) {
         if(seos_characteristic->secure_messaging) {
             seos_sm_command_get_response(
                 seos_characteristic->secure_messaging, SEOS_SM_MAX_FRAME, payload);

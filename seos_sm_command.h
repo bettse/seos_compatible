@@ -19,8 +19,10 @@ extern "C" {
 extern const uint8_t SEOS_SM_HEADER[4];
 extern const uint8_t SEOS_SM_PUT_HEADER[4];
 
-/* The command asking for the next piece of a chained response. */
-extern const uint8_t SEOS_GET_RESPONSE[4];
+/* The command asking for the next piece of a chained response. The last byte
+ * is Le, which the caller sets from the count the card reported. */
+#define SEOS_GET_RESPONSE_LEN 5
+extern const uint8_t SEOS_GET_RESPONSE[SEOS_GET_RESPONSE_LEN];
 
 /* Largest response the handler will assemble before splitting it. */
 #define SEOS_SM_RESPONSE_MAX 256

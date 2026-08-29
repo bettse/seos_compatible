@@ -26,6 +26,22 @@ extern "C" {
 extern const uint8_t SEOS_SW_SUCCESS[2];
 extern const uint8_t SEOS_SW_FILE_NOT_FOUND[2];
 
+/* The authenticate command, whichever keyset it names.
+ *
+ * The reference data qualifier in P2 selects the keyset, so it is not part of
+ * the match; matching it would answer only one keyset and silently ignore
+ * every other. */
+bool seos_is_general_authenticate_1(const uint8_t* apdu, size_t apdu_len);
+bool seos_is_general_authenticate_2(const uint8_t* apdu, size_t apdu_len);
+
+/* Length of the first authenticate command. */
+#define SEOS_GENERAL_AUTHENTICATE_1_LEN 10
+
+/* Builds the first authenticate command for a given keyset. */
+void seos_build_general_authenticate_1(
+    uint8_t key_no,
+    uint8_t out[SEOS_GENERAL_AUTHENTICATE_1_LEN]);
+
 /* Card side. */
 void seos_emulator_select_aid(BitBuffer* tx_buffer, const uint8_t* aid, size_t aid_len);
 
