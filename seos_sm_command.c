@@ -11,6 +11,16 @@ const uint8_t SEOS_SM_PUT_HEADER[4] = {0x0c, 0xdb, 0x3f, 0xff};
 #define INS_GET_DATA 0xcb
 #define INS_PUT_DATA 0xdb
 
+SeosExchangeStep
+    seos_sm_next_step(uint8_t sw1, uint8_t sw2, bool already_resent, uint8_t* expected_length) {
+    *expected_length = sw2;
+
+    if(sw1 == 0x61) return SeosExchangeContinue;
+    if(sw1 == 0x6c) return already_resent ? SeosExchangeFailed : SeosExchangeResend;
+    if(sw1 == 0x90 && sw2 == 0x00) return SeosExchangeDone;
+    return SeosExchangeFailed;
+}
+
 bool seos_sm_command_matches(const uint8_t* apdu, size_t apdu_len) {
     if(apdu_len < 4) return false;
     if(apdu[0] != SEOS_SM_HEADER[0]) return false;

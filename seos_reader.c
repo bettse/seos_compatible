@@ -62,7 +62,20 @@ bool seos_reader_request_sio(SeosReader* seos_reader) {
     BitBuffer* assembled = bit_buffer_alloc(SEOS_SM_RESPONSE_MAX);
     bool ok = false;
 
+    /* Kept so a length correction can resend exactly what went out. Wrapping
+     * the command again would step the sequence counter and the card would
+     * refuse the result. */
+    uint8_t sent[SEOS_SM_RESPONSE_MAX];
+    bool already_resent = false;
+
     for(size_t frame = 0; frame < SEOS_SM_MAX_CHAINED_FRAMES; frame++) {
+        size_t sent_len = bit_buffer_get_size_bytes(tx_buffer);
+        if(sent_len == 0 || sent_len > sizeof(sent)) {
+            FURI_LOG_W(TAG, "Nothing sensible to send");
+            break;
+        }
+        memcpy(sent, bit_buffer_get_data(tx_buffer), sent_len);
+
         error = iso14443_4a_poller_send_block(iso14443_4a_poller, tx_buffer, rx_buffer);
         if(error != Iso14443_4aErrorNone) {
             FURI_LOG_W(TAG, "iso14443_4a_poller_send_block error %d", error);
@@ -79,21 +92,31 @@ bool seos_reader_request_sio(SeosReader* seos_reader) {
 
         uint8_t sw1 = bit_buffer_get_byte(rx_buffer, rx_len - 2);
         uint8_t sw2 = bit_buffer_get_byte(rx_buffer, rx_len - 1);
+        uint8_t expected_length = 0;
+        SeosExchangeStep step = seos_sm_next_step(sw1, sw2, already_resent, &expected_length);
+
+        if(step == SeosExchangeResend) {
+            already_resent = true;
+            sent[sent_len - 1] = expected_length;
+            bit_buffer_append_bytes(tx_buffer, sent, sent_len);
+            continue;
+        }
+
         if(bit_buffer_get_size_bytes(assembled) + rx_len - 2 > SEOS_SM_RESPONSE_MAX) {
             FURI_LOG_W(TAG, "Chained response too long to hold");
             break;
         }
         bit_buffer_append_bytes(assembled, bit_buffer_get_data(rx_buffer), rx_len - 2);
 
-        if(sw1 == 0x61) {
-            /* Le is how much the card said is still waiting. */
+        if(step == SeosExchangeContinue) {
             uint8_t get_response[SEOS_GET_RESPONSE_LEN];
             memcpy(get_response, SEOS_GET_RESPONSE, sizeof(get_response));
-            get_response[SEOS_GET_RESPONSE_LEN - 1] = sw2;
+            get_response[SEOS_GET_RESPONSE_LEN - 1] = expected_length;
             bit_buffer_append_bytes(tx_buffer, get_response, sizeof(get_response));
             continue;
         }
-        if(sw1 == 0x90 && sw2 == 0x00) {
+
+        if(step == SeosExchangeDone) {
             ok = true;
         } else {
             FURI_LOG_W(TAG, "SIO request answered %02x%02x", sw1, sw2);

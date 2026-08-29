@@ -609,6 +609,32 @@ static MunitResult test_get_response_has_le(const MunitParameter p[], void* d) {
     return MUNIT_OK;
 }
 
+/* What the reader does with each status word a card can answer with. */
+static MunitResult test_exchange_steps(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    uint8_t length = 0xaa;
+
+    munit_assert_int(seos_sm_next_step(0x90, 0x00, false, &length), ==, SeosExchangeDone);
+
+    /* More waiting: ask for as much as the card named. */
+    munit_assert_int(seos_sm_next_step(0x61, 0x2f, false, &length), ==, SeosExchangeContinue);
+    munit_assert_uint8(length, ==, 0x2f);
+
+    /* A card that wants a different expected length gets one more try. */
+    munit_assert_int(seos_sm_next_step(0x6c, 0x40, false, &length), ==, SeosExchangeResend);
+    munit_assert_uint8(length, ==, 0x40);
+
+    /* But only one, or a card asking forever would hold the reader. */
+    munit_assert_int(seos_sm_next_step(0x6c, 0x40, true, &length), ==, SeosExchangeFailed);
+
+    /* Anything else ends it. */
+    munit_assert_int(seos_sm_next_step(0x6a, 0x82, false, &length), ==, SeosExchangeFailed);
+    munit_assert_int(seos_sm_next_step(0x69, 0x88, false, &length), ==, SeosExchangeFailed);
+    munit_assert_int(seos_sm_next_step(0x90, 0x01, false, &length), ==, SeosExchangeFailed);
+    return MUNIT_OK;
+}
+
 static MunitTest test_sm_command_cases[] = {
     {(char*)"/sio/returned", test_returns_sio, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
     {(char*)"/sio/other-tag", test_ignores_other_tags, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
@@ -658,6 +684,7 @@ static MunitTest test_sm_command_cases[] = {
     {(char*)"/write/stores", test_write_stores_sio, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
     {(char*)"/write/bounds", test_write_bounds, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
     {(char*)"/write/unknown-tag", test_write_unknown_tag, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
+    {(char*)"/exchange/steps", test_exchange_steps, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
     {(char*)"/matches", test_matches_only_our_commands, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
     {(char*)"/chaining/large-sio", test_chained_sio, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
     {(char*)"/chaining/many-frames",

@@ -73,6 +73,22 @@ void seos_sm_command_get_response(
     size_t max_frame_len,
     BitBuffer* tx);
 
+/* What to do with the status word a card just answered with.
+ *
+ * Kept apart from the transport so the rule can be read and tested on its own:
+ * the reader's exchange loop only has to act on the answer. */
+typedef enum {
+    SeosExchangeDone, /* the response is complete */
+    SeosExchangeContinue, /* more is waiting; ask for `expected_length` of it */
+    SeosExchangeResend, /* the card wants a different expected length */
+    SeosExchangeFailed,
+} SeosExchangeStep;
+
+/* `already_resent` stops a card that keeps asking for a different length from
+ * holding the reader in a loop. */
+SeosExchangeStep
+    seos_sm_next_step(uint8_t sw1, uint8_t sw2, bool already_resent, uint8_t* expected_length);
+
 /* Whether an APDU is a command this handler serves. */
 bool seos_sm_command_matches(const uint8_t* apdu, size_t apdu_len);
 
