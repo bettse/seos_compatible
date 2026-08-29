@@ -8,6 +8,10 @@ void seos_worker_random_nonce(uint8_t* nonce, size_t len) {
 }
 
 void seos_log_buffer(char* TAG, char* prefix, uint8_t* buffer, size_t buffer_len) {
+    /* These run on every message and build a string a byte at a time. Do not
+     * pay for it when the result is going to be thrown away. */
+    if(furi_log_get_level() < FuriLogLevelDebug) return;
+
     char display[SEOS_WORKER_MAX_BUFFER_SIZE * 2 + 1];
 
     size_t limit = MIN((size_t)SEOS_WORKER_MAX_BUFFER_SIZE, buffer_len);
@@ -24,6 +28,7 @@ void seos_log_buffer(char* TAG, char* prefix, uint8_t* buffer, size_t buffer_len
 
 void seos_log_bitbuffer(char* TAG, char* prefix, BitBuffer* buffer) {
     furi_assert(buffer);
+    if(furi_log_get_level() < FuriLogLevelDebug) return;
 
     size_t length = bit_buffer_get_size_bytes(buffer);
     const uint8_t* data = bit_buffer_get_data(buffer);
@@ -74,12 +79,9 @@ void seos_worker_diversify_key(
 
     aes_cmac(master_key_value, 16, buffer, index, div_key);
 
-    char display[33];
-    memset(display, 0, sizeof(display));
-    for(uint8_t i = 0; i < 16; i++) {
-        snprintf(display + (i * 2), sizeof(display), "%02x", div_key[i]);
-    }
-    FURI_LOG_I(TAG, "Diversified %s key: %s", is_encryption ? "Encrypt" : "Mac", display);
+    /* The derived key is not logged: it is key material, and the log is not
+     * the place for it. */
+    FURI_LOG_D(TAG, "Diversified %s key", is_encryption ? "Encrypt" : "Mac");
 }
 
 bool seos_worker_aes_decrypt(

@@ -18,12 +18,6 @@ static size_t block_size_for(uint8_t cipher) {
     return cipher == AES_128_CBC ? 16 : 8;
 }
 
-/* Pads a checksum input up to the next cipher block boundary. */
-static void append_padding(BitBuffer* buffer, size_t block_size) {
-    size_t remainder = bit_buffer_get_size_bytes(buffer) % block_size;
-    bit_buffer_append_bytes(buffer, padding, block_size - remainder);
-}
-
 /* Writes the cryptogram tag and length, returning the header length.
  *
  * A length of 128 or more needs the long form; written as a bare byte it would
@@ -70,36 +64,45 @@ static bool checksum_objects(
     uint8_t* context = cipher == AES_128_CBC ? secure_messaging->aesContext :
                                                secure_messaging->desContext;
 
-    BitBuffer* input = bit_buffer_alloc(SECURE_MESSAGING_CMAC_INPUT_SIZE);
-    bit_buffer_append_bytes(input, context, block_size);
+    /* Assembled on the stack: this runs on every message, and a heap round
+     * trip per message bought nothing. */
+    uint8_t input[SECURE_MESSAGING_CMAC_INPUT_SIZE];
+    size_t input_len = 0;
+
+    /* Each group is padded to a block boundary, so the worst case is the
+     * parts plus one block for each of the two groups. */
+    if(block_size + header_len + objects_len + 2 * block_size > sizeof(input)) {
+        FURI_LOG_W(TAG, "Checksum input too long (%d)", objects_len);
+        return false;
+    }
+
+    memcpy(input, context, block_size);
+    input_len += block_size;
+
     if(header_len > 0) {
-        bit_buffer_append_bytes(input, header, header_len);
-        append_padding(input, block_size);
+        memcpy(input + input_len, header, header_len);
+        input_len += header_len;
+        size_t remainder = input_len % block_size;
+        memcpy(input + input_len, padding, block_size - remainder);
+        input_len += block_size - remainder;
     }
-    bit_buffer_append_bytes(input, objects, objects_len);
-    append_padding(input, block_size);
 
-    bool ok = false;
+    memcpy(input + input_len, objects, objects_len);
+    input_len += objects_len;
+    size_t remainder = input_len % block_size;
+    memcpy(input + input_len, padding, block_size - remainder);
+    input_len += block_size - remainder;
+
     if(cipher == AES_128_CBC) {
-        ok = aes_cmac(
-            secure_messaging->CMACKey,
-            sizeof(secure_messaging->CMACKey),
-            (uint8_t*)bit_buffer_get_data(input),
-            bit_buffer_get_size_bytes(input),
-            cmac);
-    } else if(cipher == TWO_KEY_3DES_CBC_MODE) {
-        ok = des_cmac(
-            secure_messaging->CMACKey,
-            sizeof(secure_messaging->CMACKey),
-            (uint8_t*)bit_buffer_get_data(input),
-            bit_buffer_get_size_bytes(input),
-            cmac);
-    } else {
-        FURI_LOG_W(TAG, "Cipher not matched");
+        return aes_cmac(
+            secure_messaging->CMACKey, sizeof(secure_messaging->CMACKey), input, input_len, cmac);
     }
-
-    bit_buffer_free(input);
-    return ok;
+    if(cipher == TWO_KEY_3DES_CBC_MODE) {
+        return des_cmac(
+            secure_messaging->CMACKey, sizeof(secure_messaging->CMACKey), input, input_len, cmac);
+    }
+    FURI_LOG_W(TAG, "Cipher not matched");
+    return false;
 }
 
 /* Reads a data object header at `offset`, reporting where its value starts and

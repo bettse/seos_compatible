@@ -125,6 +125,18 @@ static MunitResult test_all_lengths(const MunitParameter p[], void* d) {
     return MUNIT_OK;
 }
 
+/* The largest message that fits, which is also the tightest the checksum
+ * input ever gets. */
+static MunitResult test_largest_message(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    round_trip_response(AES_128_CBC, SHA256, SECURE_MESSAGING_MAX_SIZE - 1);
+    round_trip_command(AES_128_CBC, SHA256, SECURE_MESSAGING_MAX_SIZE - 1);
+    round_trip_response(TWO_KEY_3DES_CBC_MODE, SHA1, SECURE_MESSAGING_MAX_SIZE - 1);
+    round_trip_command(TWO_KEY_3DES_CBC_MODE, SHA1, SECURE_MESSAGING_MAX_SIZE - 1);
+    return MUNIT_OK;
+}
+
 /* Above 127 the cryptogram length needs the long form. */
 static MunitResult test_long_form_length(const MunitParameter p[], void* d) {
     (void)p;
@@ -406,6 +418,7 @@ static MunitTest test_secure_messaging_cases[] = {
      MUNIT_TEST_OPTION_NONE,
      NULL},
     {(char*)"/padding/all-lengths", test_all_lengths, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
+    {(char*)"/padding/largest", test_largest_message, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
     {(char*)"/length/long-form", test_long_form_length, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
     {(char*)"/wrap/oversized",
      test_rejects_oversized_message,
