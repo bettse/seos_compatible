@@ -13,53 +13,55 @@
  * on this side of the line deliberately: mbedTLS is linked into the app, and
  * a plugin that called it would have to carry its own copy.
  */
-static constexpr auto app_api_table = sort(create_array_t<sym_entry>(
-    API_METHOD(seos_emulator_select_aid, void, (BitBuffer*, const uint8_t*, size_t)),
-    API_METHOD(
-        seos_emulator_select_adf,
-        bool,
-        (const uint8_t*, size_t, AuthParameters*, SeosCredential*, BitBuffer*)),
-    API_METHOD(seos_emulator_general_authenticate_1, void, (BitBuffer*, AuthParameters)),
-    API_METHOD(
-        seos_emulator_general_authenticate_2,
-        bool,
-        (const uint8_t*, size_t, SeosCredential*, AuthParameters*, BitBuffer*)),
-    API_METHOD(
-        seos_reader_select_adf_response,
-        bool,
-        (BitBuffer*, size_t, SeosCredential*, AuthParameters*)),
-    API_METHOD(
-        seos_reader_generate_cryptogram,
-        void,
-        (SeosCredential*, AuthParameters*, uint8_t*)),
-    API_METHOD(seos_reader_verify_cryptogram, bool, (AuthParameters*, const uint8_t*)),
-    API_METHOD(secure_messaging_alloc, SecureMessaging*, (AuthParameters*)),
-    API_METHOD(secure_messaging_free, void, (SecureMessaging*)),
-    API_METHOD(
-        secure_messaging_wrap_apdu,
-        bool,
-        (SecureMessaging*, uint8_t*, size_t, uint8_t*, size_t, BitBuffer*)),
-    API_METHOD(secure_messaging_unwrap_rapdu, bool, (SecureMessaging*, BitBuffer*)),
-    API_METHOD(
-        seos_sm_command_handle,
-        bool,
-        (SecureMessaging*,
-         SeosCredential*,
-         const uint8_t*,
-         size_t,
-         size_t,
-         BitBuffer*,
-         SeosSmEventCallback,
-         void*)),
-    API_METHOD(seos_sm_command_get_response, void, (SecureMessaging*, size_t, BitBuffer*)),
-    API_METHOD(seos_sm_command_matches, bool, (const uint8_t*, size_t)),
-    API_METHOD(seos_sm_event_to_view_dispatcher, void, (void*, SeosSmEvent)),
-    API_METHOD(seos_worker_random_nonce, void, (uint8_t*, size_t)),
-    API_METHOD(seos_log_bitbuffer, void, (char*, char*, BitBuffer*)),
-    API_METHOD(seos_log_buffer, void, (char*, char*, uint8_t*, size_t)),
-    API_VARIABLE(SEOS_ADF_OID, uint8_t[32]),
-    API_VARIABLE(SEOS_ADF_OID_LEN, size_t),
-    API_VARIABLE(SEOS_SM_HEADER, const uint8_t[4]),
-    API_VARIABLE(SEOS_GET_RESPONSE, const uint8_t[4]),
-    API_VARIABLE(SEOS_SW_SUCCESS, const uint8_t[2]),
-    API_VARIABLE(SEOS_SW_FILE_NOT_FOUND, const uint8_t[2])));
+static constexpr auto app_api_table = sort(
+    create_array_t<sym_entry>(
+        API_METHOD(seos_emulator_select_aid, void, (BitBuffer*, const uint8_t*, size_t)),
+        API_METHOD(
+            seos_emulator_select_adf,
+            bool,
+            (const uint8_t*, size_t, AuthParameters*, SeosCredential*, BitBuffer*)),
+        API_METHOD(seos_emulator_general_authenticate_1, void, (BitBuffer*, AuthParameters)),
+        API_METHOD(
+            seos_emulator_general_authenticate_2,
+            bool,
+            (const uint8_t*, size_t, SeosCredential*, AuthParameters*, BitBuffer*)),
+        API_METHOD(
+            seos_reader_select_adf_response,
+            bool,
+            (BitBuffer*, size_t, SeosCredential*, AuthParameters*)),
+        API_METHOD(
+            seos_reader_generate_cryptogram,
+            void,
+            (SeosCredential*, AuthParameters*, uint8_t*)),
+        API_METHOD(seos_reader_verify_cryptogram, bool, (AuthParameters*, const uint8_t*)),
+        API_METHOD(secure_messaging_alloc, SecureMessaging*, (AuthParameters*)),
+        API_METHOD(secure_messaging_free, void, (SecureMessaging*)),
+        API_METHOD(
+            secure_messaging_wrap_apdu,
+            bool,
+            (SecureMessaging*, uint8_t*, size_t, uint8_t*, size_t, BitBuffer*)),
+        API_METHOD(secure_messaging_unwrap_rapdu, bool, (SecureMessaging*, BitBuffer*)),
+        API_METHOD(
+            seos_sm_command_handle,
+            bool,
+            (SecureMessaging*,
+             SeosCredential*,
+             const uint8_t*,
+             size_t,
+             size_t,
+             BitBuffer*,
+             SeosSmEventCallback,
+             void*)),
+        API_METHOD(seos_sm_command_get_response, void, (SecureMessaging*, size_t, BitBuffer*)),
+        API_METHOD(seos_sm_command_matches, bool, (const uint8_t*, size_t)),
+        API_METHOD(seos_sm_append_status, void, (BitBuffer*, uint16_t)),
+        API_METHOD(seos_sm_event_to_view_dispatcher, void, (void*, SeosSmEvent)),
+        API_METHOD(seos_worker_random_nonce, void, (uint8_t*, size_t)),
+        API_METHOD(seos_log_bitbuffer, void, (char*, char*, BitBuffer*)),
+        API_METHOD(seos_log_buffer, void, (char*, char*, uint8_t*, size_t)),
+        API_VARIABLE(SEOS_ADF_OID, uint8_t[32]),
+        API_VARIABLE(SEOS_ADF_OID_LEN, size_t),
+        API_VARIABLE(SEOS_SM_HEADER, const uint8_t[4]),
+        API_VARIABLE(SEOS_GET_RESPONSE, const uint8_t[4]),
+        API_VARIABLE(SEOS_SW_SUCCESS, const uint8_t[2]),
+        API_VARIABLE(SEOS_SW_FILE_NOT_FOUND, const uint8_t[2])));

@@ -30,6 +30,11 @@ const uint8_t SEOS_GET_RESPONSE[4] = {0x00, 0xc0, 0x00, 0x00};
 #define DO_TAG_LIST             0x5c
 #define DO_EXTENDED_HEADER_LIST 0x4d
 
+void seos_sm_append_status(BitBuffer* tx, uint16_t status_word) {
+    bit_buffer_append_byte(tx, (uint8_t)(status_word >> 8));
+    bit_buffer_append_byte(tx, (uint8_t)(status_word & 0xff));
+}
+
 /* Sends as much of a response as one frame carries.
  *
  * Anything left over is kept for the reader to ask for, and the status word
@@ -47,8 +52,7 @@ static void send_response(
 
     if(response_len <= room) {
         bit_buffer_append_bytes(tx, response, response_len);
-        bit_buffer_append_byte(tx, (uint8_t)(status_word >> 8));
-        bit_buffer_append_byte(tx, (uint8_t)(status_word & 0xff));
+        seos_sm_append_status(tx, status_word);
         return;
     }
 
@@ -57,8 +61,7 @@ static void send_response(
     if(!secure_messaging_set_pending(secure_messaging, response + room, remaining)) {
         FURI_LOG_W(TAG, "No room to hold the rest of the response");
         bit_buffer_reset(tx);
-        bit_buffer_append_byte(tx, 0x6a);
-        bit_buffer_append_byte(tx, 0x84);
+        seos_sm_append_status(tx, SEOS_SW_NOT_ENOUGH_ROOM);
         return;
     }
 
@@ -74,8 +77,7 @@ void seos_sm_command_get_response(
 
     if(secure_messaging->pending_len == 0) {
         FURI_LOG_W(TAG, "Nothing pending to continue");
-        bit_buffer_append_byte(tx, (uint8_t)(SEOS_SW_WRONG_P1P2 >> 8));
-        bit_buffer_append_byte(tx, (uint8_t)(SEOS_SW_WRONG_P1P2 & 0xff));
+        seos_sm_append_status(tx, SEOS_SW_WRONG_P1P2);
         return;
     }
 
@@ -100,8 +102,7 @@ static void answer_status(SecureMessaging* secure_messaging, BitBuffer* tx, uint
     if(!secure_messaging_wrap_rapdu(secure_messaging, NULL, 0, status_word, tx)) {
         return;
     }
-    bit_buffer_append_byte(tx, (uint8_t)(status_word >> 8));
-    bit_buffer_append_byte(tx, (uint8_t)(status_word & 0xff));
+    seos_sm_append_status(tx, status_word);
 }
 
 /* Reads the single tag a tag list names.
@@ -176,8 +177,7 @@ bool seos_sm_command_handle(
         if(status_word == 0) status_word = SECURE_MESSAGING_SW_INCORRECT_DO;
         FURI_LOG_W(TAG, "Ending session after %04x", status_word);
 
-        bit_buffer_append_byte(tx, (uint8_t)(status_word >> 8));
-        bit_buffer_append_byte(tx, (uint8_t)(status_word & 0xff));
+        seos_sm_append_status(tx, status_word);
         bit_buffer_free(message);
         return false;
     }
@@ -223,8 +223,7 @@ bool seos_sm_command_handle(
     }
 
     BitBuffer* sio_file = bit_buffer_alloc(SEOS_SM_RESPONSE_MAX);
-    bit_buffer_append_byte(sio_file, (uint8_t)(tag >> 8));
-    bit_buffer_append_byte(sio_file, (uint8_t)(tag & 0xff));
+    seos_sm_append_status(sio_file, tag);
     bit_buffer_append_byte(sio_file, credential->sio_len);
     bit_buffer_append_bytes(sio_file, credential->sio, credential->sio_len);
 

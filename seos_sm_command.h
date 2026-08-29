@@ -70,6 +70,9 @@ void seos_sm_command_get_response(
 /* Whether an APDU is a command this handler serves. */
 bool seos_sm_command_matches(const uint8_t* apdu, size_t apdu_len);
 
+/* Appends a status word to a response, most significant byte first. */
+void seos_sm_append_status(BitBuffer* tx, uint16_t status_word);
+
 #ifdef __cplusplus
 }
 #endif

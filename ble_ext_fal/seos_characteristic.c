@@ -14,8 +14,6 @@ static uint8_t cd02[] = {0xcd, 0x02};
 static uint8_t ga1_response[] = {0x7c, 0x0a, 0x81, 0x08};
 
 // Emulation
-static uint8_t success[] = {0x90, 0x00};
-static uint8_t file_not_found[] = {0x6A, 0x82};
 
 static uint8_t select_header[] = {0x00, 0xa4, 0x04, 0x00};
 static uint8_t select_adf_header[] = {0x80, 0xa5, 0x04, 0x00};
@@ -231,9 +229,10 @@ void seos_characteristic_cred_flow(
            0) {
             seos_emulator_select_aid(
                 payload, apdu + sizeof(select_header) + 1, sizeof(standard_seos_aid));
-            bit_buffer_append_bytes(payload, (uint8_t*)success, sizeof(success));
+            bit_buffer_append_bytes(payload, (uint8_t*)SEOS_SW_SUCCESS, sizeof(SEOS_SW_SUCCESS));
         } else {
-            bit_buffer_append_bytes(payload, (uint8_t*)file_not_found, sizeof(file_not_found));
+            bit_buffer_append_bytes(
+                payload, (uint8_t*)SEOS_SW_FILE_NOT_FOUND, sizeof(SEOS_SW_FILE_NOT_FOUND));
         }
     } else if(memcmp(apdu, select_adf_header, sizeof(select_adf_header)) == 0) {
         const uint8_t* oid_list = apdu + sizeof(select_adf_header) + 1;
@@ -245,14 +244,14 @@ void seos_characteristic_cred_flow(
                &seos_characteristic->params,
                seos_characteristic->credential,
                payload)) {
-            bit_buffer_append_bytes(payload, (uint8_t*)success, sizeof(success));
+            bit_buffer_append_bytes(payload, (uint8_t*)SEOS_SW_SUCCESS, sizeof(SEOS_SW_SUCCESS));
         } else {
             FURI_LOG_W(TAG, "Failed to match any ADF OID");
         }
 
     } else if(memcmp(apdu, general_authenticate_1, sizeof(general_authenticate_1)) == 0) {
         seos_emulator_general_authenticate_1(payload, seos_characteristic->params);
-        bit_buffer_append_bytes(payload, (uint8_t*)success, sizeof(success));
+        bit_buffer_append_bytes(payload, (uint8_t*)SEOS_SW_SUCCESS, sizeof(SEOS_SW_SUCCESS));
     } else if(memcmp(apdu, general_authenticate_2_header, sizeof(general_authenticate_2_header)) == 0) {
         if(!seos_emulator_general_authenticate_2(
                apdu,
@@ -262,7 +261,7 @@ void seos_characteristic_cred_flow(
                payload)) {
             FURI_LOG_W(TAG, "Failure in General Authenticate 2");
         } else {
-            bit_buffer_append_bytes(payload, (uint8_t*)success, sizeof(success));
+            bit_buffer_append_bytes(payload, (uint8_t*)SEOS_SW_SUCCESS, sizeof(SEOS_SW_SUCCESS));
         }
 
         view_dispatcher_send_custom_event(
@@ -275,8 +274,7 @@ void seos_characteristic_cred_flow(
             seos_sm_command_get_response(
                 seos_characteristic->secure_messaging, SEOS_SM_MAX_FRAME, payload);
         } else {
-            uint8_t no_sm[] = {0x69, 0x88};
-            bit_buffer_append_bytes(payload, no_sm, sizeof(no_sm));
+            seos_sm_append_status(payload, SECURE_MESSAGING_SW_INCORRECT_DO);
         }
     } else if(seos_sm_command_matches(apdu, sizeof(SEOS_SM_HEADER))) {
         if(seos_characteristic->secure_messaging) {
@@ -294,8 +292,7 @@ void seos_characteristic_cred_flow(
                 seos_characteristic->secure_messaging = NULL;
             }
         } else {
-            uint8_t no_sm[] = {0x69, 0x88};
-            bit_buffer_append_bytes(payload, no_sm, sizeof(no_sm));
+            seos_sm_append_status(payload, SECURE_MESSAGING_SW_INCORRECT_DO);
         }
     } else if(data[0] == 0xe1) {
         // ignore

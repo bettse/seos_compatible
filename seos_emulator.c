@@ -207,8 +207,7 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
             seos_sm_command_get_response(
                 seos_emulator->secure_messaging, SEOS_SM_MAX_FRAME, tx_buffer);
         } else {
-            uint8_t no_sm[] = {0x69, 0x88};
-            bit_buffer_append_bytes(tx_buffer, no_sm, sizeof(no_sm));
+            seos_sm_append_status(tx_buffer, SECURE_MESSAGING_SW_INCORRECT_DO);
         }
     } else if(seos_sm_command_matches(apdu, sizeof(SEOS_SM_HEADER))) {
         if(seos_emulator->secure_messaging) {
@@ -226,8 +225,7 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
                 seos_emulator->secure_messaging = NULL;
             }
         } else {
-            uint8_t no_sm[] = {0x69, 0x88};
-            bit_buffer_append_bytes(tx_buffer, no_sm, sizeof(no_sm));
+            seos_sm_append_status(tx_buffer, SECURE_MESSAGING_SW_INCORRECT_DO);
         }
     } else {
         // I'm trying to find a good place to re-assert that we're emulating so we don't get stuck on a previous UI screen when we emulate repeatedly

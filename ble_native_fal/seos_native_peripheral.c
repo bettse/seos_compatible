@@ -15,8 +15,6 @@ static uint8_t general_authenticate_1[] =
 static uint8_t ga1_response[] = {0x7c, 0x0a, 0x81, 0x08};
 
 // Emulation
-static uint8_t success[] = {0x90, 0x00};
-static uint8_t file_not_found[] = {0x6A, 0x82};
 
 static uint8_t select_header[] = {0x00, 0xa4, 0x04, 0x00};
 static uint8_t select_adf_header[] = {0x80, 0xa5, 0x04, 0x00};
@@ -195,9 +193,10 @@ void seos_native_peripheral_process_message_cred(
            0) {
             seos_emulator_select_aid(
                 response, apdu + sizeof(select_header) + 1, sizeof(standard_seos_aid));
-            bit_buffer_append_bytes(response, (uint8_t*)success, sizeof(success));
+            bit_buffer_append_bytes(response, (uint8_t*)SEOS_SW_SUCCESS, sizeof(SEOS_SW_SUCCESS));
         } else {
-            bit_buffer_append_bytes(response, (uint8_t*)file_not_found, sizeof(file_not_found));
+            bit_buffer_append_bytes(
+                response, (uint8_t*)SEOS_SW_FILE_NOT_FOUND, sizeof(SEOS_SW_FILE_NOT_FOUND));
         }
     } else if(memcmp(apdu, select_adf_header, sizeof(select_adf_header)) == 0) {
         // +1 to skip APDU length byte
@@ -211,14 +210,14 @@ void seos_native_peripheral_process_message_cred(
                seos_native_peripheral->credential,
                response)) {
             view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventADFMatched);
-            bit_buffer_append_bytes(response, (uint8_t*)success, sizeof(success));
+            bit_buffer_append_bytes(response, (uint8_t*)SEOS_SW_SUCCESS, sizeof(SEOS_SW_SUCCESS));
         } else {
             FURI_LOG_W(TAG, "Failed to match any ADF OID");
         }
 
     } else if(memcmp(apdu, general_authenticate_1, sizeof(general_authenticate_1)) == 0) {
         seos_emulator_general_authenticate_1(response, seos_native_peripheral->params);
-        bit_buffer_append_bytes(response, (uint8_t*)success, sizeof(success));
+        bit_buffer_append_bytes(response, (uint8_t*)SEOS_SW_SUCCESS, sizeof(SEOS_SW_SUCCESS));
     } else if(memcmp(apdu, general_authenticate_2_header, sizeof(general_authenticate_2_header)) == 0) {
         if(!seos_emulator_general_authenticate_2(
                apdu,
@@ -228,7 +227,7 @@ void seos_native_peripheral_process_message_cred(
                response)) {
             FURI_LOG_W(TAG, "Failure in General Authenticate 2");
         } else {
-            bit_buffer_append_bytes(response, (uint8_t*)success, sizeof(success));
+            bit_buffer_append_bytes(response, (uint8_t*)SEOS_SW_SUCCESS, sizeof(SEOS_SW_SUCCESS));
         }
 
         view_dispatcher_send_custom_event(
@@ -241,8 +240,7 @@ void seos_native_peripheral_process_message_cred(
             seos_sm_command_get_response(
                 seos_native_peripheral->secure_messaging, SEOS_SM_MAX_FRAME, response);
         } else {
-            uint8_t no_sm[] = {0x69, 0x88};
-            bit_buffer_append_bytes(response, no_sm, sizeof(no_sm));
+            seos_sm_append_status(response, SECURE_MESSAGING_SW_INCORRECT_DO);
         }
     } else if(seos_sm_command_matches(apdu, sizeof(SEOS_SM_HEADER))) {
         if(seos_native_peripheral->secure_messaging) {
@@ -259,8 +257,7 @@ void seos_native_peripheral_process_message_cred(
                 seos_native_peripheral->secure_messaging = NULL;
             }
         } else {
-            uint8_t no_sm[] = {0x69, 0x88};
-            bit_buffer_append_bytes(response, no_sm, sizeof(no_sm));
+            seos_sm_append_status(response, SECURE_MESSAGING_SW_INCORRECT_DO);
         }
     } else {
         FURI_LOG_W(TAG, "no match for message");
@@ -302,7 +299,7 @@ void seos_native_peripheral_process_message_reader(
         seos_native_peripheral->phase = SELECT_ADF;
     } else if(
         seos_native_peripheral->phase == SELECT_ADF &&
-        memcmp(rx_data, file_not_found, sizeof(file_not_found)) == 0) {
+        memcmp(rx_data, SEOS_SW_FILE_NOT_FOUND, sizeof(SEOS_SW_FILE_NOT_FOUND)) == 0) {
         // Our ADF OID was rejected, close the connection
         FURI_LOG_W(TAG, "Failed to match ADF OID");
         bt_disconnect(seos_native_peripheral->bt);
