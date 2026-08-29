@@ -299,6 +299,43 @@ void seos_emulator_aes_adf_payload(SeosCredential* credential, uint8_t* buffer) 
     mbedtls_aes_free(&ctx);
 }
 
+/* How much of a saved select answer to send, or zero if it is not one.
+ *
+ * The length comes out of the saved bytes themselves, so it has to be checked
+ * against the field holding them: a credential written by something else, or
+ * damaged in storage, would otherwise have us read past the end of it and put
+ * whatever followed on the air. */
+static size_t saved_adf_response_length(const SeosCredential* credential) {
+    const uint8_t* saved = credential->adf_response;
+    size_t capacity = sizeof(credential->adf_response);
+
+    /* The algorithm object, then the cryptogram. */
+    if(capacity < 6 || saved[0] != 0xCD || saved[1] != 0x02 || saved[4] != 0x85) {
+        return 0;
+    }
+
+    size_t cryptogram_len = saved[5];
+    if(cryptogram_len >= 0x80) {
+        /* A long form length, which no answer that fits here would need. */
+        FURI_LOG_W(TAG, "Saved ADF response length not understood");
+        return 0;
+    }
+
+    /* Algorithm object, cryptogram header and body, then the checksum. */
+    size_t total = 4 + 2 + cryptogram_len + 2 + SEOS_WORKER_CMAC_SIZE;
+    if(total > capacity) {
+        FURI_LOG_W(TAG, "Saved ADF response claims %d bytes", total);
+        return 0;
+    }
+
+    if(saved[6 + cryptogram_len] != 0x8E || saved[7 + cryptogram_len] != SEOS_WORKER_CMAC_SIZE) {
+        FURI_LOG_W(TAG, "Saved ADF response has no checksum where one belongs");
+        return 0;
+    }
+
+    return total;
+}
+
 bool seos_emulator_select_adf(
     const uint8_t* oid_list,
     size_t oid_list_len,
@@ -313,15 +350,13 @@ bool seos_emulator_select_adf(
         if(p) {
             seos_log_buffer(TAG, "Select ADF OID(credential)", p, credential->adf_oid_len);
 
-            if(credential->adf_response[0] == 0xCD) {
-                FURI_LOG_I(TAG, "Using hardcoded ADF Response");
-                // 4 byte cipher/hash
-                // 2 byte cryptogram header
-                // x bytes of cryptogram
-                // 10 bytes for mac (2 byte header + 8 byte cmac)
-                size_t adf_response_len = 4 + 2 + credential->adf_response[5] + 10;
-                bit_buffer_append_bytes(tx_buffer, credential->adf_response, adf_response_len);
+            size_t saved_len = saved_adf_response_length(credential);
+            if(saved_len > 0) {
+                FURI_LOG_I(TAG, "Using saved ADF Response");
+                bit_buffer_append_bytes(tx_buffer, credential->adf_response, saved_len);
 
+                /* The saved answer names the cipher and digest the session
+                 * runs under, which need not be what we started assuming. */
                 params->cipher = credential->adf_response[2];
                 params->hash = credential->adf_response[3];
                 credential->use_hardcoded = true;

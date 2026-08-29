@@ -137,15 +137,22 @@ static bool
             break;
         }
 
-        if(!flipper_format_read_uint32(
-               file, "Diversifier Length", (uint32_t*)&(seos_credential->diversifier_len), 1))
+        uint32_t diversifier_len = 0;
+        uint32_t sio_len = 0;
+        if(!flipper_format_read_uint32(file, "Diversifier Length", &diversifier_len, 1)) break;
+        if(!flipper_format_read_uint32(file, "SIO Length", &sio_len, 1)) break;
+
+        /* The file says how long these are, and that decides how much is read
+         * into fields of fixed size. Believe it only if it fits. */
+        if(!seos_credential_lengths_fit(diversifier_len, sio_len, 0)) {
+            FURI_LOG_W(TAG, "Credential claims lengths that do not fit");
             break;
+        }
+        seos_credential->diversifier_len = diversifier_len;
+        seos_credential->sio_len = sio_len;
+
         if(!flipper_format_read_hex(
                file, "Diversifier", seos_credential->diversifier, seos_credential->diversifier_len))
-            break;
-
-        if(!flipper_format_read_uint32(
-               file, "SIO Length", (uint32_t*)&(seos_credential->sio_len), 1))
             break;
         if(!flipper_format_read_hex(file, "SIO", seos_credential->sio, seos_credential->sio_len))
             break;
@@ -170,10 +177,16 @@ static bool
             seos_credential->adf_response,
             sizeof(seos_credential->adf_response));
 
-        flipper_format_read_uint32(
-            file, "ADF OID Length", (uint32_t*)&(seos_credential->adf_oid_len), 1);
-        flipper_format_read_hex(
-            file, "ADF OID", seos_credential->adf_oid, seos_credential->adf_oid_len);
+        uint32_t adf_oid_len = 0;
+        if(flipper_format_read_uint32(file, "ADF OID Length", &adf_oid_len, 1)) {
+            if(!seos_credential_lengths_fit(0, 0, adf_oid_len)) {
+                FURI_LOG_W(TAG, "Credential claims an ADF OID that does not fit");
+                break;
+            }
+            seos_credential->adf_oid_len = adf_oid_len;
+            flipper_format_read_hex(
+                file, "ADF OID", seos_credential->adf_oid, seos_credential->adf_oid_len);
+        }
 
         parsed = true;
     } while(false);

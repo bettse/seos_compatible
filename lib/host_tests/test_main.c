@@ -8,6 +8,7 @@ extern MunitSuite test_sm_command_suite;
 extern MunitSuite test_ble_policy_suite;
 extern MunitSuite test_ble_framing_suite;
 extern MunitSuite test_session_vectors_suite;
+extern MunitSuite test_emulated_card_suite;
 
 int main(int argc, char* argv[]) {
     MunitSuite child_suites[] = {
@@ -27,6 +28,7 @@ int main(int argc, char* argv[]) {
          NULL,
          1,
          MUNIT_SUITE_OPTION_NONE},
+        {(char*)"/emulated-card", test_emulated_card_suite.tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
         {NULL, NULL, NULL, 0, MUNIT_SUITE_OPTION_NONE},
     };
     MunitSuite main_suite = {

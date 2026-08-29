@@ -16,8 +16,9 @@ App(
     fap_icon_assets="images",  # Image assets to compile for this application
     fap_file_assets="files",
     fap_libs=["mbedtls"],
-    # lib/ holds the host test suite. The two *_fal directories are built as
-    # plugins below, so they must not also go into the app.
+    # lib/ holds the host test suite. The *_fal directories are built as
+    # plugins below, so they must not also go into the app. tools/ is excluded
+    # because "*.c*" also matches Python bytecode caches.
     sources=["*.c*", "!lib", "!ble_ext_fal", "!ble_native_fal", "!ble_shared"],
 )
 
