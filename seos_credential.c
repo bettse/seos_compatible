@@ -202,7 +202,8 @@ bool seos_credential_file_select_seos(SeosCredential* seos_credential) {
     FuriString* seos_app_folder = furi_string_alloc_set(STORAGE_APP_DATA_PATH_PREFIX);
 
     DialogsFileBrowserOptions browser_options;
-    dialog_file_browser_set_basic_options(&browser_options, SEOS_APP_EXTENSION, &I_Nfc_10px);
+    dialog_file_browser_set_basic_options(
+        &browser_options, SEOS_APP_BROWSER_EXTENSIONS, &I_Nfc_10px);
     browser_options.base_path = STORAGE_APP_DATA_PATH_PREFIX;
 
     res = dialog_file_browser_show(

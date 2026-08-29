@@ -22,8 +22,11 @@
 #define SEOS_WORKER_MAX_BUFFER_SIZE 128
 #define SEOS_WORKER_CMAC_SIZE       8
 
-#define SEOS_APP_EXTENSION        ".seos"
-#define SEOS_FILE_NAME_MAX_LENGTH 32
+#define SEOS_APP_EXTENSION          ".seos"
+/* The browser also lists raw dumps. Only for filtering: the macro above is
+ * what builds and matches paths. */
+#define SEOS_APP_BROWSER_EXTENSIONS ".seos|.bin"
+#define SEOS_FILE_NAME_MAX_LENGTH   32
 
 extern char* seos_file_header;
 extern uint32_t seos_file_version;
