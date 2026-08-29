@@ -1,5 +1,7 @@
 #include "seos_protocol.h"
 
+#include <string.h>
+
 #include "keys.h"
 #include "cmac.h"
 

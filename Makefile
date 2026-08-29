@@ -11,7 +11,7 @@ MUNIT      := $(HOST_TESTS)/vendor/munit
 
 MBEDTLS_PREFIX := $(firstword $(wildcard /opt/homebrew/opt/mbedtls@3 /usr/local/opt/mbedtls@3))
 
-HOST_TEST_CFLAGS := -std=c11 -Wall -Wextra -Werror -g -I. -I$(HOST_TESTS) -I$(MUNIT) -Ible_shared
+HOST_TEST_CFLAGS := -std=c11 -D_GNU_SOURCE -Wall -Wextra -Werror -g -I. -I$(HOST_TESTS) -I$(MUNIT) -Ible_shared
 HOST_TEST_LDFLAGS := -lmbedcrypto
 ifneq ($(MBEDTLS_PREFIX),)
 HOST_TEST_CFLAGS  += -I$(MBEDTLS_PREFIX)/include

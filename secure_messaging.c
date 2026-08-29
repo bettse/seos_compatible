@@ -1,5 +1,25 @@
 #include "secure_messaging.h"
 
+/* The hash calls were renamed between mbedTLS releases: 2.x deprecated the
+ * plain names in favour of an _ret suffix, and 3.x dropped the suffix again.
+ * Only 3.x carries the version macro into the hash headers, so its absence
+ * marks the older spelling. */
+#if !defined(MBEDTLS_VERSION_MAJOR) || MBEDTLS_VERSION_MAJOR < 3
+#define seos_sha1_starts(ctx)          mbedtls_sha1_starts_ret(ctx)
+#define seos_sha1_update(ctx, b, n)    mbedtls_sha1_update_ret(ctx, b, n)
+#define seos_sha1_finish(ctx, out)     mbedtls_sha1_finish_ret(ctx, out)
+#define seos_sha256_starts(ctx, is224) mbedtls_sha256_starts_ret(ctx, is224)
+#define seos_sha256_update(ctx, b, n)  mbedtls_sha256_update_ret(ctx, b, n)
+#define seos_sha256_finish(ctx, out)   mbedtls_sha256_finish_ret(ctx, out)
+#else
+#define seos_sha1_starts(ctx)          mbedtls_sha1_starts(ctx)
+#define seos_sha1_update(ctx, b, n)    mbedtls_sha1_update(ctx, b, n)
+#define seos_sha1_finish(ctx, out)     mbedtls_sha1_finish(ctx, out)
+#define seos_sha256_starts(ctx, is224) mbedtls_sha256_starts(ctx, is224)
+#define seos_sha256_update(ctx, b, n)  mbedtls_sha256_update(ctx, b, n)
+#define seos_sha256_finish(ctx, out)   mbedtls_sha256_finish(ctx, out)
+#endif
+
 #define TAG "SecureMessaging"
 
 static uint8_t padding[16] =
@@ -302,16 +322,16 @@ SecureMessaging* secure_messaging_alloc(AuthParameters* params) {
         if(params->hash == SHA1) {
             mbedtls_sha1_context ctx;
             mbedtls_sha1_init(&ctx);
-            mbedtls_sha1_starts(&ctx);
-            mbedtls_sha1_update(&ctx, buffer, index);
-            mbedtls_sha1_finish(&ctx, accumulator + i);
+            seos_sha1_starts(&ctx);
+            seos_sha1_update(&ctx, buffer, index);
+            seos_sha1_finish(&ctx, accumulator + i);
             mbedtls_sha1_free(&ctx);
         } else if(params->hash == SHA256) {
             mbedtls_sha256_context ctx;
             mbedtls_sha256_init(&ctx);
-            mbedtls_sha256_starts(&ctx, 0);
-            mbedtls_sha256_update(&ctx, buffer, index);
-            mbedtls_sha256_finish(&ctx, accumulator + i);
+            seos_sha256_starts(&ctx, 0);
+            seos_sha256_update(&ctx, buffer, index);
+            seos_sha256_finish(&ctx, accumulator + i);
             mbedtls_sha256_free(&ctx);
         } else {
             FURI_LOG_W(TAG, "Could not match hash algorithm");
