@@ -26,11 +26,14 @@ HOST_TEST_SUPPORT := \
 
 HOST_TEST_SOURCES := \
 	$(HOST_TESTS)/test_main.c \
-	$(HOST_TESTS)/test_cmac.c
+	$(HOST_TESTS)/test_cmac.c \
+	$(HOST_TESTS)/test_secure_messaging.c
 
 HOST_TEST_APP_SOURCES := \
 	aes_cmac.c \
-	des_cmac.c
+	des_cmac.c \
+	seos_common.c \
+	secure_messaging.c
 
 .PHONY: test-host clean-host
 

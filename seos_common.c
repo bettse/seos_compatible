@@ -78,7 +78,7 @@ void seos_worker_diversify_key(
     FURI_LOG_I(TAG, "Diversified %s key: %s", is_encryption ? "Encrypt" : "Mac", display);
 }
 
-void seos_worker_aes_decrypt(
+bool seos_worker_aes_decrypt(
     uint8_t key[16],
     size_t length,
     const uint8_t* encrypted,
@@ -87,12 +87,15 @@ void seos_worker_aes_decrypt(
     memset(iv, 0, sizeof(iv));
     mbedtls_aes_context ctx;
     mbedtls_aes_init(&ctx);
-    mbedtls_aes_setkey_dec(&ctx, key, 128);
-    mbedtls_aes_crypt_cbc(&ctx, MBEDTLS_AES_DECRYPT, length, iv, encrypted, clear);
+    int rtn = mbedtls_aes_setkey_dec(&ctx, key, 128);
+    if(rtn == 0) {
+        rtn = mbedtls_aes_crypt_cbc(&ctx, MBEDTLS_AES_DECRYPT, length, iv, encrypted, clear);
+    }
     mbedtls_aes_free(&ctx);
+    return rtn == 0;
 }
 
-void seos_worker_des_decrypt(
+bool seos_worker_des_decrypt(
     uint8_t key[16],
     size_t length,
     const uint8_t* encrypted,
@@ -101,12 +104,15 @@ void seos_worker_des_decrypt(
     memset(iv, 0, sizeof(iv));
     mbedtls_des3_context ctx;
     mbedtls_des3_init(&ctx);
-    mbedtls_des3_set2key_dec(&ctx, key);
-    mbedtls_des3_crypt_cbc(&ctx, MBEDTLS_DES_DECRYPT, length, iv, encrypted, clear);
+    int rtn = mbedtls_des3_set2key_dec(&ctx, key);
+    if(rtn == 0) {
+        rtn = mbedtls_des3_crypt_cbc(&ctx, MBEDTLS_DES_DECRYPT, length, iv, encrypted, clear);
+    }
     mbedtls_des3_free(&ctx);
+    return rtn == 0;
 }
 
-void seos_worker_aes_encrypt(
+bool seos_worker_aes_encrypt(
     uint8_t key[16],
     size_t length,
     const uint8_t* clear,
@@ -115,12 +121,15 @@ void seos_worker_aes_encrypt(
     memset(iv, 0, sizeof(iv));
     mbedtls_aes_context ctx;
     mbedtls_aes_init(&ctx);
-    mbedtls_aes_setkey_enc(&ctx, key, 128);
-    mbedtls_aes_crypt_cbc(&ctx, MBEDTLS_AES_ENCRYPT, length, iv, clear, encrypted);
+    int rtn = mbedtls_aes_setkey_enc(&ctx, key, 128);
+    if(rtn == 0) {
+        rtn = mbedtls_aes_crypt_cbc(&ctx, MBEDTLS_AES_ENCRYPT, length, iv, clear, encrypted);
+    }
     mbedtls_aes_free(&ctx);
+    return rtn == 0;
 }
 
-void seos_worker_des_encrypt(
+bool seos_worker_des_encrypt(
     uint8_t key[16],
     size_t length,
     const uint8_t* clear,
@@ -129,7 +138,10 @@ void seos_worker_des_encrypt(
     memset(iv, 0, sizeof(iv));
     mbedtls_des3_context ctx;
     mbedtls_des3_init(&ctx);
-    mbedtls_des3_set2key_enc(&ctx, key);
-    mbedtls_des3_crypt_cbc(&ctx, MBEDTLS_DES_ENCRYPT, length, iv, clear, encrypted);
+    int rtn = mbedtls_des3_set2key_enc(&ctx, key);
+    if(rtn == 0) {
+        rtn = mbedtls_des3_crypt_cbc(&ctx, MBEDTLS_DES_ENCRYPT, length, iv, clear, encrypted);
+    }
     mbedtls_des3_free(&ctx);
+    return rtn == 0;
 }

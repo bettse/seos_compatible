@@ -61,13 +61,21 @@ bool seos_reader_request_sio(SeosReader* seos_reader) {
     bit_buffer_reset(tx_buffer);
 
     seos_log_bitbuffer(TAG, "NFC response(wrapped)", rx_buffer);
-    secure_messaging_unwrap_rapdu(secure_messaging, rx_buffer);
+    if(!secure_messaging_unwrap_rapdu(secure_messaging, rx_buffer)) {
+        FURI_LOG_W(TAG, "Could not unwrap SIO response");
+        return false;
+    }
     seos_log_bitbuffer(TAG, "NFC response(clear)", rx_buffer);
 
-    // Skip fileId
+    // fileId(2) then the length byte
+    if(bit_buffer_get_size_bytes(rx_buffer) < 3) {
+        FURI_LOG_W(TAG, "SIO response too short");
+        return false;
+    }
     seos_reader->credential->sio_len = bit_buffer_get_byte(rx_buffer, 2);
-    if(seos_reader->credential->sio_len > sizeof(seos_reader->credential->sio)) {
-        FURI_LOG_W(TAG, "SIO too long to save");
+    if(seos_reader->credential->sio_len > sizeof(seos_reader->credential->sio) ||
+       bit_buffer_get_size_bytes(rx_buffer) < 3 + seos_reader->credential->sio_len) {
+        FURI_LOG_W(TAG, "SIO length does not fit the response");
         return false;
     }
     memcpy(

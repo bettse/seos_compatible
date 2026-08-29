@@ -80,23 +80,25 @@ void seos_worker_diversify_key(
     bool is_encryption,
     uint8_t* div_key);
 
-void seos_worker_aes_decrypt(
+/* The cipher wrappers return false on a bad key or a length that is not a
+ * whole number of blocks. The output buffer is untouched in that case. */
+bool seos_worker_aes_decrypt(
     uint8_t key[16],
     size_t length,
     const uint8_t* encrypted,
     uint8_t* clear);
-void seos_worker_des_decrypt(
+bool seos_worker_des_decrypt(
     uint8_t key[16],
     size_t length,
     const uint8_t* encrypted,
     uint8_t* clear);
 
-void seos_worker_aes_encrypt(
+bool seos_worker_aes_encrypt(
     uint8_t key[16],
     size_t length,
     const uint8_t* clear,
     uint8_t* encrypted);
-void seos_worker_des_encrypt(
+bool seos_worker_des_encrypt(
     uint8_t key[16],
     size_t length,
     const uint8_t* clear,

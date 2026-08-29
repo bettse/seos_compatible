@@ -30,21 +30,13 @@
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 #endif
 
-#define FURI_LOG_T(...) \
-    do {                \
-    } while(0)
-#define FURI_LOG_D(...) \
-    do {                \
-    } while(0)
-#define FURI_LOG_I(...) \
-    do {                \
-    } while(0)
-#define FURI_LOG_W(...) \
-    do {                \
-    } while(0)
-#define FURI_LOG_E(...) \
-    do {                \
-    } while(0)
+/* Logging is discarded, but the tag is consumed so app code that declares one
+ * still compiles warning-free. */
+#define FURI_LOG_T(tag, ...) ((void)(tag))
+#define FURI_LOG_D(tag, ...) ((void)(tag))
+#define FURI_LOG_I(tag, ...) ((void)(tag))
+#define FURI_LOG_W(tag, ...) ((void)(tag))
+#define FURI_LOG_E(tag, ...) ((void)(tag))
 
 #define furi_assert(expr) assert(expr)
 #define furi_check(expr)  assert(expr)

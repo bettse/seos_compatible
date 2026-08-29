@@ -14,6 +14,15 @@
 
 #define SECURE_MESSAGING_MAX_SIZE 128
 
+/* Room for the sequence counter, a padded command header, the largest
+ * cryptogram and its objects, each group padded to a block boundary. */
+#define SECURE_MESSAGING_CMAC_INPUT_SIZE 192
+
+/* Where the cryptogram starts. A command carries a four byte header and a
+ * length byte ahead of it; a response body starts with the cryptogram. */
+#define SECURE_MESSAGING_CAPDU_BODY_OFFSET 5
+#define SECURE_MESSAGING_RAPDU_BODY_OFFSET 0
+
 typedef struct {
     uint8_t cipher;
     uint8_t PrivacyKey[16];
@@ -26,7 +35,16 @@ SecureMessaging* secure_messaging_alloc(AuthParameters* params);
 
 void secure_messaging_free(SecureMessaging* secure_messaging);
 
-void secure_messaging_wrap_apdu(
+void secure_messaging_increment_context(SecureMessaging* secure_messaging);
+
+/* The wrap calls return false if the message will not fit or the cipher
+ * refuses it, leaving the output buffer alone.
+ *
+ * The unwrap calls replace the buffer contents with the recovered plaintext
+ * and return true. They return false, leaving the buffer untouched, if the
+ * message is malformed or the padding is wrong -- a caller must check before
+ * reading what it thinks is plaintext. */
+bool secure_messaging_wrap_apdu(
     SecureMessaging* secure_messaging,
     uint8_t* message,
     size_t message_len,
@@ -34,10 +52,10 @@ void secure_messaging_wrap_apdu(
     size_t apdu_header_len,
     BitBuffer* tx_buffer);
 
-void secure_messaging_unwrap_apdu(SecureMessaging* secure_messaging, BitBuffer* rx_buffer);
+bool secure_messaging_unwrap_apdu(SecureMessaging* secure_messaging, BitBuffer* rx_buffer);
 
-void secure_messaging_unwrap_rapdu(SecureMessaging* secure_messaging, BitBuffer* rx_buffer);
-void secure_messaging_wrap_rapdu(
+bool secure_messaging_unwrap_rapdu(SecureMessaging* secure_messaging, BitBuffer* rx_buffer);
+bool secure_messaging_wrap_rapdu(
     SecureMessaging* secure_messaging,
     uint8_t* message,
     size_t message_len,

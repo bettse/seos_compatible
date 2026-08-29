@@ -136,11 +136,16 @@ void seos_central_notify(void* context, const uint8_t* buffer, size_t buffer_len
             bit_buffer_append_bytes(tmp, apdu, apdu_len);
 
             seos_log_bitbuffer(TAG, "NFC received(wrapped)", tmp);
-            secure_messaging_unwrap_apdu(seos_central->secure_messaging, tmp);
+            if(!secure_messaging_unwrap_apdu(seos_central->secure_messaging, tmp)) {
+                FURI_LOG_W(TAG, "Could not unwrap secure message");
+                bit_buffer_free(tmp);
+                return;
+            }
             seos_log_bitbuffer(TAG, "NFC received(clear)", tmp);
 
             const uint8_t* message = bit_buffer_get_data(tmp);
-            if(memcmp(message, request_sio, sizeof(request_sio)) == 0) {
+            if(bit_buffer_get_size_bytes(tmp) >= sizeof(request_sio) &&
+               memcmp(message, request_sio, sizeof(request_sio)) == 0) {
                 view_dispatcher_send_custom_event(
                     seos_central->seos->view_dispatcher, SeosCustomEventSIORequested);
                 BitBuffer* sio_file = bit_buffer_alloc(128);
