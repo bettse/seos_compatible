@@ -28,6 +28,16 @@ Seos®, HID Global®, and ASSA ABLOY® are trademarks or registered trademarks o
 - [ ] When parsing incoming data, use buffer + len instead of BitBuffer so I can increment buffer pointer as I parse header(s)
 - [ ] CMAC checking where I missed it
 
+## 📡 External BLE
+
+The nRF52840 dongle is off by default. Turn it on with **External BLE** in the
+main menu; the choice is saved. While it is off the dongle's stack is never
+loaded and costs nothing, the scanners are hidden, and BLE emulation uses the
+Flipper's own radio.
+
+Both BLE stacks ship inside the `.fap` as plugins and are loaded only while a
+BLE screen is open.
+
 ## 💡 Hardware for BLE support (experimental)
 
 1. Install/setup Nordic SDK
