@@ -73,18 +73,41 @@ void seos_characteristic_stop(SeosCharacteristic* seos_characteristic) {
     seos_att_stop(seos_characteristic->seos_att);
 }
 
+/* Every message carries one byte of framing ahead of the command. A message
+ * with nothing after that byte carries no command, and counting from it would
+ * run the length backwards past zero. */
+#define BLE_FRAMING_LEN 1
+
+static bool ble_apdu_bounds(const BitBuffer* attribute_value, const uint8_t** apdu, size_t* apdu_len) {
+    size_t len = bit_buffer_get_size_bytes(attribute_value);
+    if(len <= BLE_FRAMING_LEN) return false;
+
+    *apdu = bit_buffer_get_data(attribute_value) + BLE_FRAMING_LEN;
+    *apdu_len = len - BLE_FRAMING_LEN;
+    return true;
+}
+
 void seos_characteristic_reader_flow(
     SeosCharacteristic* seos_characteristic,
     BitBuffer* attribute_value,
     BitBuffer* payload) {
     const uint8_t* data = bit_buffer_get_data(attribute_value);
-    const uint8_t* rx_data = data + 1; // Match name to nfc version for easier copying
+    const uint8_t* rx_data = NULL;
+    size_t rx_len = 0;
+    if(!ble_apdu_bounds(attribute_value, &rx_data, &rx_len)) {
+        FURI_LOG_I(TAG, "Message carries no response");
+        return;
+    }
 
     // 022f20180014000400
     // 520c00
     // c0 6f0c840a a0000004400001010001
     // 9000
-    if(memcmp(data + 5, standard_seos_aid, sizeof(standard_seos_aid)) == 0) { // response to select
+    /* The select answer names the application four bytes into the response. */
+    const size_t select_aid_offset = 4;
+    if(rx_len >= select_aid_offset + sizeof(standard_seos_aid) &&
+       memcmp(rx_data + select_aid_offset, standard_seos_aid, sizeof(standard_seos_aid)) ==
+           0) { // response to select
         FURI_LOG_I(TAG, "Select ADF");
         uint8_t select_adf_header[] = {
             0x80, 0xa5, 0x04, 0x00, (uint8_t)SEOS_ADF_OID_LEN + 2, 0x06, (uint8_t)SEOS_ADF_OID_LEN};
@@ -92,7 +115,7 @@ void seos_characteristic_reader_flow(
         bit_buffer_append_bytes(payload, select_adf_header, sizeof(select_adf_header));
         bit_buffer_append_bytes(payload, SEOS_ADF_OID, SEOS_ADF_OID_LEN);
         seos_characteristic->phase = SELECT_ADF;
-    } else if(memcmp(data + 1, cd02, sizeof(cd02)) == 0) {
+    } else if(rx_len >= sizeof(cd02) && memcmp(rx_data, cd02, sizeof(cd02)) == 0) {
         if(seos_reader_select_adf_response(
                attribute_value, 1, seos_characteristic->credential, &seos_characteristic->params)) {
             // Craft response
@@ -163,9 +186,8 @@ void seos_characteristic_reader_flow(
     } else if(seos_characteristic->phase == REQUEST_SIO) {
         SecureMessaging* secure_messaging = seos_characteristic->secure_messaging;
 
-        BitBuffer* rx_buffer = bit_buffer_alloc(bit_buffer_get_size_bytes(attribute_value) - 1);
-        bit_buffer_append_bytes(
-            rx_buffer, rx_data, bit_buffer_get_size_bytes(attribute_value) - 1);
+        BitBuffer* rx_buffer = bit_buffer_alloc(rx_len);
+        bit_buffer_append_bytes(rx_buffer, rx_data, rx_len);
         seos_log_bitbuffer(TAG, "BLE response(wrapped)", rx_buffer);
         if(!secure_messaging_unwrap_rapdu(secure_messaging, rx_buffer)) {
             FURI_LOG_W(TAG, "Could not unwrap SIO response");
@@ -209,7 +231,7 @@ void seos_characteristic_reader_flow(
         bit_buffer_free(rx_buffer);
 
         seos_characteristic->phase = SELECT_AID;
-    } else if(data[0] == 0xe1) {
+    } else if(rx_data[0] == 0xe1) {
         //ignore
     } else {
         FURI_LOG_W(TAG, "No match for write request");
@@ -220,13 +242,20 @@ void seos_characteristic_cred_flow(
     SeosCharacteristic* seos_characteristic,
     BitBuffer* attribute_value,
     BitBuffer* payload) {
-    const uint8_t* data = bit_buffer_get_data(attribute_value);
-    const uint8_t* apdu = data + 1; // Match name to nfc version for easier copying
-    const size_t apdu_len = bit_buffer_get_size_bytes(attribute_value) - 1;
+    const uint8_t* apdu = NULL;
+    size_t apdu_len = 0;
+    if(!ble_apdu_bounds(attribute_value, &apdu, &apdu_len)) {
+        FURI_LOG_I(TAG, "Message carries no command");
+        return;
+    }
 
-    if(memcmp(apdu, select_header, sizeof(select_header)) == 0) {
-        if(memcmp(apdu + sizeof(select_header) + 1, standard_seos_aid, sizeof(standard_seos_aid)) ==
-           0) {
+    const size_t select_aid_len = sizeof(select_header) + 1 + sizeof(standard_seos_aid);
+
+    if(apdu_len >= sizeof(select_header) &&
+       memcmp(apdu, select_header, sizeof(select_header)) == 0) {
+        if(apdu_len >= select_aid_len &&
+           memcmp(apdu + sizeof(select_header) + 1, standard_seos_aid, sizeof(standard_seos_aid)) ==
+               0) {
             seos_emulator_select_aid(
                 payload, apdu + sizeof(select_header) + 1, sizeof(standard_seos_aid));
             bit_buffer_append_bytes(payload, (uint8_t*)SEOS_SW_SUCCESS, sizeof(SEOS_SW_SUCCESS));
@@ -283,7 +312,7 @@ void seos_characteristic_cred_flow(
                    seos_characteristic->secure_messaging,
                    seos_characteristic->credential,
                    apdu,
-                   bit_buffer_get_size_bytes(attribute_value) - 1,
+                   apdu_len,
                    SEOS_SM_MAX_FRAME,
                    payload,
                    seos_sm_event_to_view_dispatcher,
@@ -294,7 +323,7 @@ void seos_characteristic_cred_flow(
         } else {
             seos_sm_append_status(payload, SECURE_MESSAGING_SW_INCORRECT_DO);
         }
-    } else if(data[0] == 0xe1) {
+    } else if(apdu[0] == 0xe1) {
         // ignore
     } else {
         FURI_LOG_W(TAG, "no match for attribute_value");

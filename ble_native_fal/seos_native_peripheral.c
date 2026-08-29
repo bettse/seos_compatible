@@ -284,8 +284,22 @@ void seos_native_peripheral_process_message_reader(
     const uint8_t* rx_data = bit_buffer_get_data(seos_native_peripheral->rx_buffer);
     const size_t rx_len = bit_buffer_get_size_bytes(seos_native_peripheral->rx_buffer);
 
-    if(memcmp(rx_data + 4, standard_seos_aid, sizeof(standard_seos_aid)) ==
-       0) { // response to select
+    /* Every test below reads into the response, so there has to be one. */
+    if(rx_len == 0) {
+        FURI_LOG_I(TAG, "Empty response");
+        bit_buffer_free(response);
+        return;
+    }
+
+    /* The select answer names the application four bytes in. */
+    const size_t select_aid_offset = 4;
+
+    const uint8_t* card_cryptogram = NULL;
+    size_t card_cryptogram_len = 0;
+
+    if(rx_len >= select_aid_offset + sizeof(standard_seos_aid) &&
+       memcmp(rx_data + select_aid_offset, standard_seos_aid, sizeof(standard_seos_aid)) ==
+           0) { // response to select
         FURI_LOG_I(TAG, "Select ADF");
         uint8_t select_adf_header[] = {
             0x80, 0xa5, 0x04, 0x00, (uint8_t)SEOS_ADF_OID_LEN + 2, 0x06, (uint8_t)SEOS_ADF_OID_LEN};
@@ -296,6 +310,7 @@ void seos_native_peripheral_process_message_reader(
         seos_native_peripheral->phase = SELECT_ADF;
     } else if(
         seos_native_peripheral->phase == SELECT_ADF &&
+        rx_len >= sizeof(SEOS_SW_FILE_NOT_FOUND) &&
         memcmp(rx_data, SEOS_SW_FILE_NOT_FOUND, sizeof(SEOS_SW_FILE_NOT_FOUND)) == 0) {
         // Our ADF OID was rejected, close the connection
         FURI_LOG_W(TAG, "Failed to match ADF OID");
@@ -304,7 +319,7 @@ void seos_native_peripheral_process_message_reader(
         // Revert UI to advertising state
         view_dispatcher_send_custom_event(
             seos_native_peripheral->seos->view_dispatcher, SeosCustomEventAdvertising);
-    } else if(memcmp(rx_data, cd02, sizeof(cd02)) == 0) {
+    } else if(rx_len >= sizeof(cd02) && memcmp(rx_data, cd02, sizeof(cd02)) == 0) {
         BitBuffer* attribute_value = bit_buffer_alloc(rx_len);
         bit_buffer_append_bytes(attribute_value, rx_data, rx_len);
         if(seos_reader_select_adf_response(
@@ -321,8 +336,13 @@ void seos_native_peripheral_process_message_reader(
             seos_native_peripheral->phase = GENERAL_AUTHENTICATION_1;
         }
         bit_buffer_free(attribute_value);
-    } else if(memcmp(rx_data, ga1_response, sizeof(ga1_response)) == 0) {
-        memcpy(seos_native_peripheral->params.rndICC, rx_data + 4, 8);
+    } else if(
+        rx_len >= sizeof(ga1_response) && memcmp(rx_data, ga1_response, sizeof(ga1_response)) == 0 &&
+        seos_parse_ga1_response(
+            rx_data,
+            rx_len,
+            seos_native_peripheral->params.rndICC,
+            sizeof(seos_native_peripheral->params.rndICC))) {
 
         // Craft response
         uint8_t cryptogram[32 + 8];
@@ -346,9 +366,9 @@ void seos_native_peripheral_process_message_reader(
         bit_buffer_append_byte(response, 0x00);
 
         seos_native_peripheral->phase = GENERAL_AUTHENTICATION_2;
-    } else if(rx_data[0] == 0x7C && rx_data[2] == 0x82) { // ga2 response
-        if(rx_data[3] == 40) {
-            if(!seos_reader_verify_cryptogram(&seos_native_peripheral->params, rx_data + 4)) {
+    } else if(seos_parse_ga2_response(rx_data, rx_len, &card_cryptogram, &card_cryptogram_len)) {
+        if(card_cryptogram_len == SEOS_CARD_CRYPTOGRAM_LEN) {
+            if(!seos_reader_verify_cryptogram(&seos_native_peripheral->params, card_cryptogram)) {
                 FURI_LOG_W(TAG, "Card cryptogram failed verification");
                 bit_buffer_free(response);
                 return;
@@ -357,7 +377,7 @@ void seos_native_peripheral_process_message_reader(
             view_dispatcher_send_custom_event(
                 seos_native_peripheral->seos->view_dispatcher, SeosCustomEventAuthenticated);
         } else {
-            FURI_LOG_W(TAG, "Unhandled card cryptogram size %d", rx_data[3]);
+            FURI_LOG_W(TAG, "Unhandled card cryptogram size %d", card_cryptogram_len);
         }
 
         seos_native_peripheral->secure_messaging =
@@ -387,6 +407,11 @@ void seos_native_peripheral_process_message_reader(
         SeosCredential* credential = seos_native_peripheral->credential;
         AuthParameters* params = &seos_native_peripheral->params;
 
+        if(rx_len < 2) {
+            FURI_LOG_W(TAG, "Response carries no wrapped message");
+            bit_buffer_free(response);
+            return;
+        }
         BitBuffer* rx_buffer = bit_buffer_alloc(rx_len - 1);
         bit_buffer_append_bytes(rx_buffer, rx_data, rx_len - 1);
         seos_log_bitbuffer(TAG, "BLE response(wrapped)", rx_buffer);

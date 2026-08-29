@@ -136,6 +136,13 @@ void seos_att_process_payload(void* context, BitBuffer* message) {
 
     bit_buffer_reset(seos_att->tx_buf);
     const uint8_t* data = bit_buffer_get_data(message);
+
+    /* Everything below reads from `data`, starting with the opcode. */
+    size_t message_len = bit_buffer_get_size_bytes(message);
+    if(message_len < 1) {
+        FURI_LOG_W(TAG, "Empty payload");
+        return;
+    }
     uint8_t opcode = data[0];
     struct att_read_by_type_req* s;
     uint16_t* start_handle;
@@ -153,7 +160,9 @@ void seos_att_process_payload(void* context, BitBuffer* message) {
         if(reject) {
             bit_buffer_append_byte(seos_att->tx_buf, ATT_ERROR_RSP);
             bit_buffer_append_byte(seos_att->tx_buf, opcode);
-            bit_buffer_append_bytes(seos_att->tx_buf, data + 1, sizeof(uint16_t));
+            if(message_len >= 1 + sizeof(uint16_t)) {
+                bit_buffer_append_bytes(seos_att->tx_buf, data + 1, sizeof(uint16_t));
+            }
             bit_buffer_append_byte(seos_att->tx_buf, 0x0a);
             seos_l2cap_send(seos_att->seos_l2cap, seos_att->tx_buf);
         }
@@ -397,12 +406,20 @@ void seos_att_process_payload(void* context, BitBuffer* message) {
             seos_att->tx_buf, (uint8_t*)&attribute_type, sizeof(attribute_type));
         break;
     case ATT_WRITE_REQ:
+        if(message_len < sizeof(struct att_write_req)) {
+            FURI_LOG_W(TAG, "Short ATT_WRITE_REQ");
+            break;
+        }
         struct att_write_req* w = (struct att_write_req*)(data);
-        length = bit_buffer_get_size_bytes(message) - sizeof(struct att_write_req);
+        length = message_len - sizeof(struct att_write_req);
         FURI_LOG_D(TAG, "ATT Write Req %d bytes to %04x", length, w->handle);
         if(w->handle == 0x0009) {
             bit_buffer_append_byte(seos_att->tx_buf, ATT_WRITE_RSP);
         } else if(w->handle == 0x000d) {
+            if(length < sizeof(uint16_t)) {
+                FURI_LOG_W(TAG, "Short notification value");
+                break;
+            }
             uint16_t* value = (uint16_t*)(data + sizeof(struct att_write_req));
             if(*value == DISABLE_NOTIFICATION_VALUE) {
                 FURI_LOG_I(TAG, "Unsubscribe");
@@ -422,8 +439,12 @@ void seos_att_process_payload(void* context, BitBuffer* message) {
         FURI_LOG_D(TAG, "ATT_WRITE_RSP");
         break;
     case ATT_WRITE_CMD:
+        if(message_len < sizeof(struct att_write_req)) {
+            FURI_LOG_W(TAG, "Short ATT_WRITE_CMD");
+            break;
+        }
         struct att_write_req* c = (struct att_write_req*)(data);
-        length = bit_buffer_get_size_bytes(message) - sizeof(struct att_write_req);
+        length = message_len - sizeof(struct att_write_req);
         FURI_LOG_D(TAG, "ATT Write CMD %d bytes to %04x", length, c->handle);
 
         if(c->handle == 0x000c) {
@@ -442,8 +463,12 @@ void seos_att_process_payload(void* context, BitBuffer* message) {
         // No response to CMD expected
         break;
     case ATT_HANDLE_VALUE_NTF:
+        if(message_len < sizeof(struct att_write_req)) {
+            FURI_LOG_W(TAG, "Short ATT_HANDLE_VALUE_NTF");
+            break;
+        }
         struct att_write_req* n = (struct att_write_req*)(data);
-        length = bit_buffer_get_size_bytes(message) - sizeof(struct att_write_req);
+        length = message_len - sizeof(struct att_write_req);
         FURI_LOG_D(TAG, "ATT handle value notify %d bytes to %04x", length, n->handle);
         if(n->handle == 0x000d) {
             if(seos_att->notify) {

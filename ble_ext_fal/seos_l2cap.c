@@ -66,6 +66,7 @@ void seos_l2cap_recv(void* context, uint16_t handle, uint8_t flags, BitBuffer* p
 
     const uint8_t* data = bit_buffer_get_data(pdu);
     struct l2cap_header* header = (struct l2cap_header*)(data);
+    size_t pdu_len = bit_buffer_get_size_bytes(pdu);
 
     switch(Packet_Boundary_Flag) {
     case ACL_CONT:
@@ -98,22 +99,27 @@ void seos_l2cap_recv(void* context, uint16_t handle, uint8_t flags, BitBuffer* p
         break;
     case ACL_START:
     case ACL_START_NO_FLUSH:
+        /* The header states the length and the channel, so it has to be there
+         * before either can be read, and before anything is counted from it. */
+        if(pdu_len < sizeof(struct l2cap_header)) {
+            FURI_LOG_W(TAG, "PDU shorter than its header");
+            return;
+        }
         uint16_t payload_len = header->payload_len;
         uint16_t cid = header->cid;
+        size_t carried = pdu_len - sizeof(struct l2cap_header);
 
-        if(bit_buffer_get_size_bytes(pdu) < header->payload_len) {
+        if(carried < payload_len) {
             // FURI_LOG_W(TAG, "Incomplete PDU");
             seos_l2cap->pdu_len = payload_len;
             bit_buffer_reset(seos_l2cap->rx_accumulator);
             bit_buffer_append_bytes(
-                seos_l2cap->rx_accumulator,
-                data + sizeof(struct l2cap_header),
-                bit_buffer_get_size_bytes(pdu) - sizeof(struct l2cap_header));
+                seos_l2cap->rx_accumulator, data + sizeof(struct l2cap_header), carried);
             return;
         }
 
         if(cid == CID_ATT) {
-            BitBuffer* payload = bit_buffer_alloc(payload_len);
+            BitBuffer* payload = bit_buffer_alloc(payload_len > 0 ? payload_len : 1);
             bit_buffer_append_bytes(payload, data + sizeof(struct l2cap_header), payload_len);
             if(seos_l2cap->receive_callback) {
                 seos_l2cap->receive_callback(seos_l2cap->receive_callback_context, payload);
