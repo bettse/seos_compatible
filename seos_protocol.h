@@ -42,6 +42,15 @@ void seos_build_general_authenticate_1(
     uint8_t key_no,
     uint8_t out[SEOS_GENERAL_AUTHENTICATE_1_LEN]);
 
+/* Answers that give nothing away.
+ *
+ * A card that returns an error when it does not hold what was asked for, or
+ * when authentication fails, tells anyone who asks what it carries and
+ * whether their key was right. These answer with well formed nonsense and a
+ * success word instead, which is indistinguishable without the key. */
+void seos_emulator_shill_select_adf(BitBuffer* tx_buffer);
+void seos_emulator_shill_authenticate(BitBuffer* tx_buffer);
+
 /* Card side. */
 void seos_emulator_select_aid(BitBuffer* tx_buffer, const uint8_t* aid, size_t aid_len);
 

@@ -52,6 +52,38 @@ void seos_build_general_authenticate_1(
         sizeof(general_authenticate_1_body));
 }
 
+/* Appends `len` bytes that carry no information. */
+static void append_random(BitBuffer* tx_buffer, size_t len) {
+    uint8_t chunk[48];
+    while(len > 0) {
+        size_t take = len < sizeof(chunk) ? len : sizeof(chunk);
+        seos_worker_random_nonce(chunk, take);
+        bit_buffer_append_bytes(tx_buffer, chunk, take);
+        len -= take;
+    }
+}
+
+void seos_emulator_shill_select_adf(BitBuffer* tx_buffer) {
+    /* The same shape a real answer has: the algorithm pair, a cryptogram, and
+     * a checksum over it. */
+    uint8_t header[] = {0xcd, 0x02, AES_128_CBC, SHA256, 0x85, 0x40};
+    bit_buffer_append_bytes(tx_buffer, header, sizeof(header));
+    append_random(tx_buffer, 0x40);
+
+    uint8_t checksum_prefix[] = {0x8e, SEOS_WORKER_CMAC_SIZE};
+    bit_buffer_append_bytes(tx_buffer, checksum_prefix, sizeof(checksum_prefix));
+    append_random(tx_buffer, SEOS_WORKER_CMAC_SIZE);
+
+    bit_buffer_append_bytes(tx_buffer, SEOS_SW_SUCCESS, sizeof(SEOS_SW_SUCCESS));
+}
+
+void seos_emulator_shill_authenticate(BitBuffer* tx_buffer) {
+    uint8_t header[] = {0x7c, 0x2a, 0x82, 0x28};
+    bit_buffer_append_bytes(tx_buffer, header, sizeof(header));
+    append_random(tx_buffer, 0x28);
+    bit_buffer_append_bytes(tx_buffer, SEOS_SW_SUCCESS, sizeof(SEOS_SW_SUCCESS));
+}
+
 void seos_emulator_select_aid(BitBuffer* tx_buffer, const uint8_t* aid, size_t aid_len) {
     FURI_LOG_D(TAG, "Select AID");
     bit_buffer_append_byte(tx_buffer, 0x6F); // FCI Template
@@ -192,9 +224,9 @@ bool seos_emulator_general_authenticate_2(
 }
 
 void seos_emulator_des_adf_payload(SeosCredential* credential, uint8_t* buffer) {
-    // Synethic IV
-    /// random bytes
-    uint8_t rnd[4] = {0, 0, 0, 0};
+    /* A fresh random half-block and its checksum, sent as the first block. */
+    uint8_t rnd[4];
+    seos_worker_random_nonce(rnd, sizeof(rnd));
     uint8_t cmac[8] = {0};
     /// cmac
     des_cmac(SEOS_ADF1_PRIV_MAC, sizeof(SEOS_ADF1_PRIV_MAC), rnd, sizeof(rnd), cmac);
@@ -206,7 +238,7 @@ void seos_emulator_des_adf_payload(SeosCredential* credential, uint8_t* buffer) 
     memcpy(buffer + 0, iv, sizeof(iv));
 
     uint8_t clear[0x30];
-    memset(clear, 0, sizeof(clear));
+    seos_worker_random_nonce(clear, sizeof(clear));
     size_t index = 0;
 
     // OID
@@ -228,9 +260,12 @@ void seos_emulator_des_adf_payload(SeosCredential* credential, uint8_t* buffer) 
 }
 
 void seos_emulator_aes_adf_payload(SeosCredential* credential, uint8_t* buffer) {
-    // Synethic IV
-    /// random bytes
-    uint8_t rnd[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+    /* The initialisation vector is built from a fresh random half-block and
+     * its checksum, and sent as the first block. Without the randomness every
+     * select answer is identical, which is exactly what a card watching for
+     * this would look for. */
+    uint8_t rnd[8];
+    seos_worker_random_nonce(rnd, sizeof(rnd));
     uint8_t cmac[16] = {0};
     /// cmac
     aes_cmac(SEOS_ADF1_PRIV_MAC, sizeof(SEOS_ADF1_PRIV_MAC), rnd, sizeof(rnd), cmac);
@@ -242,7 +277,7 @@ void seos_emulator_aes_adf_payload(SeosCredential* credential, uint8_t* buffer) 
     memcpy(buffer + 0, iv, sizeof(iv));
 
     uint8_t clear[0x30];
-    memset(clear, 0, sizeof(clear));
+    seos_worker_random_nonce(clear, sizeof(clear));
     size_t index = 0;
 
     // OID

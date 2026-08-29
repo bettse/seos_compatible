@@ -184,10 +184,8 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
             view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventADFMatched);
         } else {
             FURI_LOG_W(TAG, "Failed to match any ADF OID");
-            bit_buffer_append_bytes(
-                seos_emulator->tx_buffer,
-                (uint8_t*)SEOS_SW_FILE_NOT_FOUND,
-                sizeof(SEOS_SW_FILE_NOT_FOUND));
+            seos_emulator_shill_select_adf(seos_emulator->tx_buffer);
+            seos_emulator_response_complete = true;
         }
     } else if(seos_is_general_authenticate_1(apdu, apdu_len)) {
         seos_emulator_general_authenticate_1(seos_emulator->tx_buffer, seos_emulator->params);
@@ -199,7 +197,8 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
                &seos_emulator->params,
                seos_emulator->tx_buffer)) {
             FURI_LOG_W(TAG, "Failure in General Authenticate 2");
-            ret = NfcCommandStop;
+            seos_emulator_shill_authenticate(seos_emulator->tx_buffer);
+            seos_emulator_response_complete = true;
             return ret;
         }
         view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventAuthenticated);

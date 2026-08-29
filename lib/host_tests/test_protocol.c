@@ -229,7 +229,104 @@ static MunitResult test_rejects_bad_cryptogram(const MunitParameter p[], void* d
     return MUNIT_OK;
 }
 
+/* An answer that gives nothing away still has to look like an answer. */
+static MunitResult test_shill_select_looks_real(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    BitBuffer* first = bit_buffer_alloc(TX_CAPACITY);
+    BitBuffer* second = bit_buffer_alloc(TX_CAPACITY);
+    seos_emulator_shill_select_adf(first);
+    seos_emulator_shill_select_adf(second);
+
+    /* The algorithm pair, a cryptogram object, a checksum object, success. */
+    munit_assert_uint8(bit_buffer_get_byte(first, 0), ==, 0xcd);
+    munit_assert_uint8(bit_buffer_get_byte(first, 1), ==, 0x02);
+    munit_assert_uint8(bit_buffer_get_byte(first, 4), ==, 0x85);
+    size_t len = bit_buffer_get_size_bytes(first);
+    munit_assert_uint8(bit_buffer_get_byte(first, len - 12), ==, 0x8e);
+    munit_assert_uint8(bit_buffer_get_byte(first, len - 2), ==, 0x90);
+    munit_assert_uint8(bit_buffer_get_byte(first, len - 1), ==, 0x00);
+
+    /* And two of them must not be the same, or it is a fingerprint. */
+    munit_assert_size(bit_buffer_get_size_bytes(second), ==, len);
+    munit_assert_memory_not_equal(len, bit_buffer_get_data(first), bit_buffer_get_data(second));
+
+    bit_buffer_free(first);
+    bit_buffer_free(second);
+    return MUNIT_OK;
+}
+
+static MunitResult test_shill_authenticate_looks_real(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    BitBuffer* first = bit_buffer_alloc(TX_CAPACITY);
+    BitBuffer* second = bit_buffer_alloc(TX_CAPACITY);
+    seos_emulator_shill_authenticate(first);
+    seos_emulator_shill_authenticate(second);
+
+    uint8_t expected_header[] = {0x7c, 0x2a, 0x82, 0x28};
+    munit_assert_memory_equal(
+        sizeof(expected_header), bit_buffer_get_data(first), expected_header);
+    size_t len = bit_buffer_get_size_bytes(first);
+    munit_assert_size(len, ==, 4 + 0x28 + 2);
+    munit_assert_uint8(bit_buffer_get_byte(first, len - 2), ==, 0x90);
+
+    munit_assert_memory_not_equal(len, bit_buffer_get_data(first), bit_buffer_get_data(second));
+
+    bit_buffer_free(first);
+    bit_buffer_free(second);
+    return MUNIT_OK;
+}
+
+/* Two select answers for the same credential must differ, or the card is
+ * recognisable from its answer alone. */
+static MunitResult test_select_response_varies(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    SeosCredential credential = test_credential();
+
+    AuthParameters params;
+    memset(&params, 0, sizeof(params));
+    params.cipher = AES_128_CBC;
+    params.hash = SHA256;
+
+    uint8_t oid_list[64];
+    size_t oid_list_len = 0;
+    oid_list[oid_list_len++] = 0x06;
+    oid_list[oid_list_len++] = (uint8_t)SEOS_ADF_OID_LEN;
+    memcpy(oid_list + oid_list_len, SEOS_ADF_OID, SEOS_ADF_OID_LEN);
+    oid_list_len += SEOS_ADF_OID_LEN;
+
+    BitBuffer* first = bit_buffer_alloc(TX_CAPACITY);
+    BitBuffer* second = bit_buffer_alloc(TX_CAPACITY);
+    munit_assert_true(
+        seos_emulator_select_adf(oid_list, oid_list_len, &params, &credential, first));
+    munit_assert_true(
+        seos_emulator_select_adf(oid_list, oid_list_len, &params, &credential, second));
+
+    munit_assert_size(bit_buffer_get_size_bytes(first), ==, bit_buffer_get_size_bytes(second));
+    munit_assert_memory_not_equal(
+        bit_buffer_get_size_bytes(first), bit_buffer_get_data(first), bit_buffer_get_data(second));
+
+    bit_buffer_free(first);
+    bit_buffer_free(second);
+    return MUNIT_OK;
+}
+
 static MunitTest test_protocol_cases[] = {
+    {(char*)"/shill/select", test_shill_select_looks_real, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
+    {(char*)"/shill/authenticate",
+     test_shill_authenticate_looks_real,
+     NULL,
+     NULL,
+     MUNIT_TEST_OPTION_NONE,
+     NULL},
+    {(char*)"/select-adf/varies",
+     test_select_response_varies,
+     NULL,
+     NULL,
+     MUNIT_TEST_OPTION_NONE,
+     NULL},
     {(char*)"/select-aid", test_select_aid_response, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
     {(char*)"/authenticate-1/challenge",
      test_authenticate_1_carries_challenge,

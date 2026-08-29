@@ -5,10 +5,12 @@
 static uint8_t queue[SEOS_HOST_RANDOM_MAX];
 static size_t queue_len;
 static size_t queue_offset;
+static uint32_t fallback_counter = 1;
 
 void seos_host_clear_random(void) {
     queue_len = 0;
     queue_offset = 0;
+    fallback_counter = 1;
 }
 
 void seos_host_set_random(const uint8_t* data, size_t len) {
@@ -37,9 +39,11 @@ void furi_hal_random_fill_buf(uint8_t* buf, uint32_t len) {
     memcpy(buf, queue + queue_offset, taken);
     queue_offset += taken;
 
-    /* Short of queued octets, fall back to a counting ramp so an unscripted
-     * session is still reproducible. */
+    /* Short of queued octets, fall back to a counter. It advances across
+     * calls, so two draws differ the way real randomness would, and it starts
+     * from the same place every run, so a failure reproduces. */
     for(size_t i = taken; i < len; i++) {
-        buf[i] = (uint8_t)i;
+        buf[i] = (uint8_t)(fallback_counter >> 24) ^ (uint8_t)i;
+        fallback_counter = fallback_counter * 1103515245u + 12345u;
     }
 }
