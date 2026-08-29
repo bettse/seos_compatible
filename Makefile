@@ -35,6 +35,7 @@ HOST_TEST_SOURCES := \
 	$(HOST_TESTS)/test_cmac.c \
 	$(HOST_TESTS)/test_kdf.c \
 	$(HOST_TESTS)/test_secure_messaging.c \
+	$(HOST_TESTS)/test_large_messages.c \
 	$(HOST_TESTS)/test_protocol.c \
 	$(HOST_TESTS)/test_reader_parse.c \
 	$(HOST_TESTS)/test_sm_command.c \

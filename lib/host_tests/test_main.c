@@ -6,6 +6,7 @@ extern MunitSuite test_iso14443_4_suite;
 extern MunitSuite test_cmac_suite;
 extern MunitSuite test_kdf_suite;
 extern MunitSuite test_secure_messaging_suite;
+extern MunitSuite test_large_messages_suite;
 extern MunitSuite test_protocol_suite;
 extern MunitSuite test_reader_parse_suite;
 extern MunitSuite test_sm_command_suite;
@@ -33,6 +34,11 @@ int main(int argc, char* argv[]) {
         {(char*)"/kdf", test_kdf_suite.tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
         {(char*)"/secure-messaging",
          test_secure_messaging_suite.tests,
+         NULL,
+         1,
+         MUNIT_SUITE_OPTION_NONE},
+        {(char*)"/large-messages",
+         test_large_messages_suite.tests,
          NULL,
          1,
          MUNIT_SUITE_OPTION_NONE},

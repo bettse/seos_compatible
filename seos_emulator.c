@@ -71,6 +71,18 @@ static bool emulator_apdu_bounds(const BitBuffer* rx_buffer, size_t* offset, siz
 #endif
 }
 
+/* Bytes of response this card may put in one frame.
+ *
+ * Taken from the frame size it advertises when selected, rather than a fixed
+ * budget that may be smaller or larger than what was agreed. */
+static size_t emulator_frame_budget(Seos* seos) {
+    const Iso14443_4aData* data = nfc_device_get_data(seos->nfc_device, NfcProtocolIso14443_4a);
+    if(!data) return SEOS_SM_MAX_FRAME;
+
+    size_t budget = seos_iso14443_4_payload_budget(iso14443_4a_get_frame_size_max(data));
+    return budget > 0 ? budget : SEOS_SM_MAX_FRAME;
+}
+
 NfcCommand seos_worker_listener_inspect_reader(Seos* seos) {
     SeosEmulator* seos_emulator = seos->seos_emulator;
     BitBuffer* tx_buffer = seos_emulator->tx_buffer;
@@ -226,7 +238,7 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
         seos_emulator_response_complete = true;
         if(seos_emulator->secure_messaging) {
             seos_sm_command_get_response(
-                seos_emulator->secure_messaging, SEOS_SM_MAX_FRAME, tx_buffer);
+                seos_emulator->secure_messaging, emulator_frame_budget(seos), tx_buffer);
         } else {
             seos_sm_append_status(tx_buffer, SECURE_MESSAGING_SW_INCORRECT_DO);
         }
@@ -238,7 +250,7 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
                    seos_emulator->credential,
                    apdu,
                    apdu_len,
-                   SEOS_SM_MAX_FRAME,
+                   emulator_frame_budget(seos),
                    tx_buffer,
                    seos_sm_event_to_view_dispatcher,
                    seos)) {

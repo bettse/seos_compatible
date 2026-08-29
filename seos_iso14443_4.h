@@ -31,6 +31,13 @@ bool seos_iso14443_4_apdu_bounds(
     size_t* offset,
     size_t* apdu_len);
 
+/* Bytes of payload a frame of `frame_size_max` can carry.
+ *
+ * A block spends one byte on its PCB, up to one more on a node address, and
+ * two on the checksum at the end. Returns 0 for a frame with no room for a
+ * payload, which the caller should treat as no information. */
+size_t seos_iso14443_4_payload_budget(uint16_t frame_size_max);
+
 #ifdef __cplusplus
 }
 #endif

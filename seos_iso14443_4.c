@@ -18,3 +18,11 @@ bool seos_iso14443_4_apdu_bounds(
     *apdu_len = len - header_len;
     return true;
 }
+
+/* PCB, an optional node address, and the two checksum bytes. */
+#define FRAME_OVERHEAD 4
+
+size_t seos_iso14443_4_payload_budget(uint16_t frame_size_max) {
+    if(frame_size_max <= FRAME_OVERHEAD) return 0;
+    return (size_t)frame_size_max - FRAME_OVERHEAD;
+}

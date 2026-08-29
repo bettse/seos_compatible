@@ -15,17 +15,17 @@
 extern "C" {
 #endif
 
-/* Largest plaintext a single cryptogram carries. A full SIO plus the file id
- * and length ahead of it needs more than the file itself. */
-#define SECURE_MESSAGING_MAX_SIZE 192
+/* Scratch for wrapping and unwrapping is sized from the message, so there is
+ * no fixed ceiling here and no per-call stack cost for the largest one.
+ *
+ * A command still states its own length in a single byte, so the objects and
+ * checksum of one command have to fit in 255. Anything longer has to be
+ * carried in pieces by the transport. */
 
-/* Room for the sequence counter, a padded command header, the largest
- * cryptogram and its objects, each group padded to a block boundary. */
-#define SECURE_MESSAGING_CMAC_INPUT_SIZE 256
-
-/* Largest span of protected objects: a cryptogram header, the cryptogram, and
- * the protected status word. */
-#define SECURE_MESSAGING_OBJECTS_SIZE 208
+/* Largest message a single command can carry, for either cipher. Wrapping
+ * works the exact limit out from the block size and refuses anything past it;
+ * this is the smaller of the two, and safe for both. */
+#define SECURE_MESSAGING_COMMAND_MAX 223
 
 /* The command header covered by the checksum. */
 #define SECURE_MESSAGING_APDU_HEADER_LEN 4

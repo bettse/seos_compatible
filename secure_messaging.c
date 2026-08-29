@@ -48,17 +48,16 @@ static bool checksum_objects(
     uint8_t* context = cipher == AES_128_CBC ? secure_messaging->aesContext :
                                                secure_messaging->desContext;
 
-    /* Assembled on the stack: this runs on every message, and a heap round
-     * trip per message bought nothing. */
-    uint8_t input[SECURE_MESSAGING_CMAC_INPUT_SIZE];
-    size_t input_len = 0;
-
-    /* Each group is padded to a block boundary, so the worst case is the
-     * parts plus one block for each of the two groups. */
-    if(block_size + header_len + objects_len + 2 * block_size > sizeof(input)) {
-        FURI_LOG_W(TAG, "Checksum input too long (%d)", objects_len);
+    /* The counter, then the header and the objects, each group padded to a
+     * block boundary. Sized from what is actually being checksummed rather
+     * than from a ceiling every caller would pay for. */
+    size_t input_cap = block_size + header_len + objects_len + 2 * block_size;
+    uint8_t* input = malloc(input_cap);
+    if(!input) {
+        FURI_LOG_W(TAG, "No room for %zu bytes of checksum input", input_cap);
         return false;
     }
+    size_t input_len = 0;
 
     memcpy(input, context, block_size);
     input_len += block_size;
@@ -77,13 +76,16 @@ static bool checksum_objects(
     memcpy(input + input_len, padding, block_size - remainder);
     input_len += block_size - remainder;
 
-    return seos_cipher_cmac(
+    bool ok = seos_cipher_cmac(
         cipher,
         secure_messaging->CMACKey,
         sizeof(secure_messaging->CMACKey),
         input,
         input_len,
         cmac);
+
+    free(input);
+    return ok;
 }
 
 /* Walks the data objects from `body_offset` to the checksum object.
@@ -149,6 +151,11 @@ static bool verify_checksum(
 
 /* Copies a message into a padded plaintext block, returning the padded length.
  * Returns 0 if the message does not leave room for the mandatory pad byte. */
+/* Padded length of a message: at least one pad byte, rounded up to a block. */
+static size_t padded_size(size_t message_len, size_t block_size) {
+    return ((message_len / block_size) + 1) * block_size;
+}
+
 static size_t pad_message(
     const uint8_t* message,
     size_t message_len,
@@ -161,7 +168,7 @@ static size_t pad_message(
         return 0;
     }
 
-    size_t clear_len = ((message_len / block_size) + 1) * block_size;
+    size_t clear_len = padded_size(message_len, block_size);
     if(clear_len > clear_cap) {
         return 0;
     }
@@ -373,58 +380,72 @@ bool secure_messaging_wrap_apdu(
     BitBuffer* tx_buffer) {
     uint8_t cipher = secure_messaging->cipher;
     size_t block_size = seos_cipher_block_size(cipher);
-
-    uint8_t clear[SECURE_MESSAGING_MAX_SIZE];
-    size_t clear_len = pad_message(message, message_len, block_size, clear, sizeof(clear));
-    if(clear_len == 0) {
-        FURI_LOG_W(TAG, "Message too long to wrap (%d)", message_len);
-        return false;
-    }
-
-    secure_messaging_increment_context(secure_messaging);
-
-    uint8_t encrypted[SECURE_MESSAGING_MAX_SIZE];
-    if(!seos_cipher_encrypt(
-           secure_messaging->cipher, secure_messaging->PrivacyKey, clear_len, clear, encrypted)) {
-        return false;
-    }
-
-    uint8_t cryptogram_header[SEOS_TLV_HEADER_MAX];
-    size_t cryptogram_header_len =
-        seos_tlv_write_header(cryptogram_header, DO_CRYPTOGRAM, clear_len);
+    if(block_size == 0) return false;
 
     uint8_t protected_le[] = {DO_LE, 0x00};
     uint8_t checksum_prefix[] = {DO_CHECKSUM, SEOS_WORKER_CMAC_SIZE};
     uint8_t Le[] = {0x00};
 
-    /* Assemble the protected objects once. They are checksummed and then sent
-     * as they stand, so the two cannot disagree. */
-    uint8_t objects[SECURE_MESSAGING_OBJECTS_SIZE];
-    size_t objects_len = 0;
-    memcpy(objects, cryptogram_header, cryptogram_header_len);
-    objects_len += cryptogram_header_len;
-    memcpy(objects + objects_len, encrypted, clear_len);
-    objects_len += clear_len;
-    memcpy(objects + objects_len, protected_le, sizeof(protected_le));
-    objects_len += sizeof(protected_le);
+    size_t clear_cap = padded_size(message_len, block_size);
+    size_t objects_cap = SEOS_TLV_HEADER_MAX + clear_cap + sizeof(protected_le);
 
-    uint8_t cmac[16];
-    if(!checksum_objects(
-           secure_messaging, apdu_header, apdu_header_len, objects, objects_len, cmac)) {
+    /* The command states its own length in one byte, so the objects and the
+     * checksum after them have to fit in that. A message past this needs the
+     * transport to carry it in pieces. */
+    if(objects_cap + sizeof(checksum_prefix) + SEOS_WORKER_CMAC_SIZE > 0xff) {
+        FURI_LOG_W(TAG, "Message of %zu will not fit one command", message_len);
         return false;
     }
 
-    uint8_t apdu_len[] = {
-        (uint8_t)(objects_len + sizeof(checksum_prefix) + SEOS_WORKER_CMAC_SIZE)};
+    uint8_t* clear = malloc(clear_cap);
+    uint8_t* encrypted = malloc(clear_cap);
+    uint8_t* objects = malloc(objects_cap);
+    bool ok = false;
 
-    bit_buffer_reset(tx_buffer);
-    bit_buffer_append_bytes(tx_buffer, apdu_header, apdu_header_len);
-    bit_buffer_append_bytes(tx_buffer, apdu_len, sizeof(apdu_len));
-    bit_buffer_append_bytes(tx_buffer, objects, objects_len);
-    bit_buffer_append_bytes(tx_buffer, checksum_prefix, sizeof(checksum_prefix));
-    bit_buffer_append_bytes(tx_buffer, cmac, SEOS_WORKER_CMAC_SIZE);
-    bit_buffer_append_bytes(tx_buffer, Le, sizeof(Le));
-    return true;
+    do {
+        if(!clear || !encrypted || !objects) {
+            FURI_LOG_W(TAG, "No room to wrap %zu bytes", message_len);
+            break;
+        }
+
+        size_t clear_len = pad_message(message, message_len, block_size, clear, clear_cap);
+        if(clear_len == 0) break;
+
+        secure_messaging_increment_context(secure_messaging);
+
+        if(!seos_cipher_encrypt(cipher, secure_messaging->PrivacyKey, clear_len, clear, encrypted))
+            break;
+
+        /* Assemble the protected objects once. They are checksummed and then
+         * sent as they stand, so the two cannot disagree. */
+        size_t objects_len = seos_tlv_write_header(objects, DO_CRYPTOGRAM, clear_len);
+        memcpy(objects + objects_len, encrypted, clear_len);
+        objects_len += clear_len;
+        memcpy(objects + objects_len, protected_le, sizeof(protected_le));
+        objects_len += sizeof(protected_le);
+
+        uint8_t cmac[16];
+        if(!checksum_objects(
+               secure_messaging, apdu_header, apdu_header_len, objects, objects_len, cmac))
+            break;
+
+        uint8_t apdu_len[] = {
+            (uint8_t)(objects_len + sizeof(checksum_prefix) + SEOS_WORKER_CMAC_SIZE)};
+
+        bit_buffer_reset(tx_buffer);
+        bit_buffer_append_bytes(tx_buffer, apdu_header, apdu_header_len);
+        bit_buffer_append_bytes(tx_buffer, apdu_len, sizeof(apdu_len));
+        bit_buffer_append_bytes(tx_buffer, objects, objects_len);
+        bit_buffer_append_bytes(tx_buffer, checksum_prefix, sizeof(checksum_prefix));
+        bit_buffer_append_bytes(tx_buffer, cmac, SEOS_WORKER_CMAC_SIZE);
+        bit_buffer_append_bytes(tx_buffer, Le, sizeof(Le));
+        ok = true;
+    } while(false);
+
+    free(clear);
+    free(encrypted);
+    free(objects);
+    return ok;
 }
 
 bool secure_messaging_unwrap_rapdu(SecureMessaging* secure_messaging, BitBuffer* rx_buffer) {
@@ -462,7 +483,10 @@ bool secure_messaging_unwrap_rapdu(SecureMessaging* secure_messaging, BitBuffer*
         return true;
     }
 
-    uint8_t clear[SECURE_MESSAGING_MAX_SIZE];
+    /* The plaintext is never longer than the message it came out of. */
+    uint8_t* clear = malloc(data_len);
+    if(!clear) return false;
+
     size_t clear_len = 0;
     if(!unwrap_cryptogram(
            secure_messaging,
@@ -470,9 +494,10 @@ bool secure_messaging_unwrap_rapdu(SecureMessaging* secure_messaging, BitBuffer*
            data_len,
            SECURE_MESSAGING_RAPDU_BODY_OFFSET,
            clear,
-           sizeof(clear),
+           data_len,
            &clear_len)) {
         secure_messaging->last_error_sw = SECURE_MESSAGING_SW_INCORRECT_DO;
+        free(clear);
         return false;
     }
 
@@ -487,6 +512,7 @@ bool secure_messaging_unwrap_rapdu(SecureMessaging* secure_messaging, BitBuffer*
 
     bit_buffer_reset(rx_buffer);
     bit_buffer_append_bytes(rx_buffer, clear, clear_len);
+    free(clear);
     return true;
 }
 
@@ -528,7 +554,10 @@ bool secure_messaging_unwrap_apdu(SecureMessaging* secure_messaging, BitBuffer* 
         return false;
     }
 
-    uint8_t clear[SECURE_MESSAGING_MAX_SIZE];
+    /* The plaintext is never longer than the message it came out of. */
+    uint8_t* clear = malloc(data_len);
+    if(!clear) return false;
+
     size_t clear_len = 0;
     if(!unwrap_cryptogram(
            secure_messaging,
@@ -536,14 +565,16 @@ bool secure_messaging_unwrap_apdu(SecureMessaging* secure_messaging, BitBuffer* 
            data_len,
            SECURE_MESSAGING_CAPDU_BODY_OFFSET,
            clear,
-           sizeof(clear),
+           data_len,
            &clear_len)) {
         secure_messaging->last_error_sw = SECURE_MESSAGING_SW_INCORRECT_DO;
+        free(clear);
         return false;
     }
 
     bit_buffer_reset(rx_buffer);
     bit_buffer_append_bytes(rx_buffer, clear, clear_len);
+    free(clear);
     return true;
 }
 
@@ -554,44 +585,67 @@ bool secure_messaging_wrap_rapdu(
     uint16_t status_word,
     BitBuffer* tx_buffer) {
     size_t block_size = seos_cipher_block_size(secure_messaging->cipher);
-
-    uint8_t objects[SECURE_MESSAGING_OBJECTS_SIZE];
-    size_t objects_len = 0;
-
-    if(message_len > 0) {
-        uint8_t clear[SECURE_MESSAGING_MAX_SIZE];
-        size_t clear_len = pad_message(message, message_len, block_size, clear, sizeof(clear));
-        if(clear_len == 0) {
-            FURI_LOG_W(TAG, "Message too long to wrap (%d)", message_len);
-            return false;
-        }
-
-        secure_messaging_increment_context(secure_messaging);
-
-        uint8_t encrypted[SECURE_MESSAGING_MAX_SIZE];
-        if(!seos_cipher_encrypt(
-               secure_messaging->cipher,
-               secure_messaging->PrivacyKey,
-               clear_len,
-               clear,
-               encrypted)) {
-            return false;
-        }
-
-        objects_len = seos_tlv_write_header(objects, DO_CRYPTOGRAM, clear_len);
-        memcpy(objects + objects_len, encrypted, clear_len);
-        objects_len += clear_len;
-    } else {
-        secure_messaging_increment_context(secure_messaging);
-    }
+    if(block_size == 0) return false;
 
     uint8_t protected_status[] = {
         DO_STATUS, 0x02, (uint8_t)(status_word >> 8), (uint8_t)(status_word & 0xff)};
-    memcpy(objects + objects_len, protected_status, sizeof(protected_status));
-    objects_len += sizeof(protected_status);
+
+    /* A response with no data carries no cryptogram, only its status. */
+    size_t clear_cap = message_len > 0 ? padded_size(message_len, block_size) : 0;
+    size_t objects_cap = SEOS_TLV_HEADER_MAX + clear_cap + sizeof(protected_status);
+
+    uint8_t* objects = malloc(objects_cap);
+    uint8_t* clear = clear_cap > 0 ? malloc(clear_cap) : NULL;
+    uint8_t* encrypted = clear_cap > 0 ? malloc(clear_cap) : NULL;
+    size_t objects_len = 0;
+    bool ok = false;
+
+    do {
+        if(!objects || (clear_cap > 0 && (!clear || !encrypted))) {
+            FURI_LOG_W(TAG, "No room to wrap %zu bytes", message_len);
+            break;
+        }
+
+        if(message_len > 0) {
+            size_t clear_len = pad_message(message, message_len, block_size, clear, clear_cap);
+            if(clear_len == 0) {
+                FURI_LOG_W(TAG, "Message too long to wrap (%d)", message_len);
+                break;
+            }
+
+            secure_messaging_increment_context(secure_messaging);
+
+            if(!seos_cipher_encrypt(
+                   secure_messaging->cipher,
+                   secure_messaging->PrivacyKey,
+                   clear_len,
+                   clear,
+                   encrypted)) {
+                break;
+            }
+
+            objects_len = seos_tlv_write_header(objects, DO_CRYPTOGRAM, clear_len);
+            memcpy(objects + objects_len, encrypted, clear_len);
+            objects_len += clear_len;
+        } else {
+            secure_messaging_increment_context(secure_messaging);
+        }
+
+        memcpy(objects + objects_len, protected_status, sizeof(protected_status));
+        objects_len += sizeof(protected_status);
+        ok = true;
+    } while(false);
+
+    free(clear);
+    free(encrypted);
+    if(!ok) {
+        free(objects);
+        return false;
+    }
 
     uint8_t cmac[16];
     if(!checksum_objects(secure_messaging, NULL, 0, objects, objects_len, cmac)) {
+        free(objects);
         return false;
     }
 
@@ -600,5 +654,6 @@ bool secure_messaging_wrap_rapdu(
     bit_buffer_append_bytes(tx_buffer, checksum_prefix, sizeof(checksum_prefix));
     bit_buffer_append_bytes(tx_buffer, cmac, SEOS_WORKER_CMAC_SIZE);
     // The same status word is appended in the clear by the caller
+    free(objects);
     return true;
 }

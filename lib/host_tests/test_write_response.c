@@ -190,7 +190,8 @@ static MunitResult test_refuses_a_protected_failure(const MunitParameter p[], vo
     SecureMessaging* reader = secure_messaging_alloc(&params);
     SecureMessaging* card = secure_messaging_alloc(&params);
 
-    /* Step both for a command, as an exchange would. */
+    /* A real command first, so both counters step together and the refusal
+     * below is about the status word rather than the counters drifting. */
     uint8_t message[] = {0xff, 0x00, 0x01, 0x5a};
     BitBuffer* wire = bit_buffer_alloc(BUFFER_CAPACITY);
     munit_assert_true(secure_messaging_wrap_apdu(
@@ -200,9 +201,9 @@ static MunitResult test_refuses_a_protected_failure(const MunitParameter p[], vo
         (uint8_t*)SEOS_SM_PUT_HEADER,
         sizeof(SEOS_SM_PUT_HEADER),
         wire));
+    munit_assert_true(secure_messaging_unwrap_apdu(card, wire));
 
     BitBuffer* answer = bit_buffer_alloc(BUFFER_CAPACITY);
-    secure_messaging_increment_context(card);
     munit_assert_true(
         secure_messaging_wrap_rapdu(card, NULL, 0, SEOS_SW_NOT_ENOUGH_ROOM, answer));
 

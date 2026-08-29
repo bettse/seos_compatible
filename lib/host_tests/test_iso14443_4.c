@@ -116,6 +116,23 @@ static MunitResult test_never_reports_past_the_end(const MunitParameter p[], voi
     return MUNIT_OK;
 }
 
+/* The advertised frame size covers the whole block, so the payload is what is
+ * left after the header and the checksum. */
+static MunitResult test_payload_budget(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    /* The sizes the shortest and longest useful frames work out to. */
+    munit_assert_size(seos_iso14443_4_payload_budget(256), ==, 252);
+    munit_assert_size(seos_iso14443_4_payload_budget(128), ==, 124);
+    munit_assert_size(seos_iso14443_4_payload_budget(64), ==, 60);
+
+    /* A frame with no room for a payload reports none. */
+    munit_assert_size(seos_iso14443_4_payload_budget(4), ==, 0);
+    munit_assert_size(seos_iso14443_4_payload_budget(0), ==, 0);
+
+    return MUNIT_OK;
+}
+
 static MunitTest test_iso14443_4_cases[] = {
     {(char*)"/bounds/i-block", test_plain_i_block, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
     {(char*)"/bounds/nad", test_i_block_with_nad, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
@@ -127,6 +144,7 @@ static MunitTest test_iso14443_4_cases[] = {
      MUNIT_TEST_OPTION_NONE,
      NULL},
     {(char*)"/bounds/empty", test_empty_frame, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
+    {(char*)"/payload-budget", test_payload_budget, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
     {(char*)"/bounds/never-past-end",
      test_never_reports_past_the_end,
      NULL,

@@ -9,6 +9,7 @@
 
 #include <seos_protocol.h>
 #include <secure_messaging.h>
+#include <seos_sm_command.h>
 
 #define RX_CAPACITY 256
 
@@ -42,7 +43,7 @@ static void round_trip_command(uint8_t cipher, uint8_t hash, size_t message_len)
     SecureMessaging* receiver = session(cipher, hash);
 
     uint8_t header[] = {0x0c, 0xcb, 0x3f, 0xff};
-    uint8_t message[SECURE_MESSAGING_MAX_SIZE];
+    uint8_t message[SECURE_MESSAGING_COMMAND_MAX];
     for(size_t i = 0; i < message_len; i++)
         message[i] = (uint8_t)(i * 7 + 1);
 
@@ -67,7 +68,7 @@ static void round_trip_response(uint8_t cipher, uint8_t hash, size_t message_len
     SecureMessaging* sender = session(cipher, hash);
     SecureMessaging* receiver = session(cipher, hash);
 
-    uint8_t message[SECURE_MESSAGING_MAX_SIZE];
+    uint8_t message[SECURE_MESSAGING_COMMAND_MAX];
     for(size_t i = 0; i < message_len; i++)
         message[i] = (uint8_t)(i * 3 + 9);
 
@@ -119,7 +120,7 @@ static MunitResult test_exact_block_multiple(const MunitParameter p[], void* d) 
 static MunitResult test_all_lengths(const MunitParameter p[], void* d) {
     (void)p;
     (void)d;
-    for(size_t len = 0; len < SECURE_MESSAGING_MAX_SIZE; len++) {
+    for(size_t len = 0; len < SECURE_MESSAGING_COMMAND_MAX; len++) {
         round_trip_response(AES_128_CBC, SHA256, len);
     }
     return MUNIT_OK;
@@ -130,10 +131,10 @@ static MunitResult test_all_lengths(const MunitParameter p[], void* d) {
 static MunitResult test_largest_message(const MunitParameter p[], void* d) {
     (void)p;
     (void)d;
-    round_trip_response(AES_128_CBC, SHA256, SECURE_MESSAGING_MAX_SIZE - 1);
-    round_trip_command(AES_128_CBC, SHA256, SECURE_MESSAGING_MAX_SIZE - 1);
-    round_trip_response(TWO_KEY_3DES_CBC_MODE, SHA1, SECURE_MESSAGING_MAX_SIZE - 1);
-    round_trip_command(TWO_KEY_3DES_CBC_MODE, SHA1, SECURE_MESSAGING_MAX_SIZE - 1);
+    round_trip_response(AES_128_CBC, SHA256, SECURE_MESSAGING_COMMAND_MAX - 1);
+    round_trip_command(AES_128_CBC, SHA256, SECURE_MESSAGING_COMMAND_MAX - 1);
+    round_trip_response(TWO_KEY_3DES_CBC_MODE, SHA1, SECURE_MESSAGING_COMMAND_MAX - 1);
+    round_trip_command(TWO_KEY_3DES_CBC_MODE, SHA1, SECURE_MESSAGING_COMMAND_MAX - 1);
     return MUNIT_OK;
 }
 
@@ -165,18 +166,23 @@ static MunitResult test_long_form_length(const MunitParameter p[], void* d) {
     return MUNIT_OK;
 }
 
-/* A message with no room for the pad byte must be refused, not written one
- * past the plaintext buffer. */
+/* A command longer than its own length byte can state must be refused, and
+ * must leave the buffer alone rather than send a length that wrapped. */
 static MunitResult test_rejects_oversized_message(const MunitParameter p[], void* d) {
     (void)p;
     (void)d;
     SecureMessaging* sm = session(AES_128_CBC, SHA256);
-    uint8_t message[SECURE_MESSAGING_MAX_SIZE];
+    uint8_t message[SECURE_MESSAGING_COMMAND_MAX + 1];
     memset(message, 0x11, sizeof(message));
 
     BitBuffer* buffer = bit_buffer_alloc(RX_CAPACITY);
-    munit_assert_false(
-        secure_messaging_wrap_rapdu(sm, message, sizeof(message), SEOS_SW_SUCCESS_VALUE, buffer));
+    munit_assert_false(secure_messaging_wrap_apdu(
+        sm,
+        message,
+        sizeof(message),
+        (uint8_t*)SEOS_SM_HEADER,
+        sizeof(SEOS_SM_HEADER),
+        buffer));
     munit_assert_size(bit_buffer_get_size_bytes(buffer), ==, 0);
 
     bit_buffer_free(buffer);
