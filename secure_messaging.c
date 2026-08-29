@@ -14,10 +14,6 @@ static uint8_t padding[16] =
 /* Longest cryptogram header: tag, long-form marker, length. */
 #define CRYPTOGRAM_HEADER_MAX 3
 
-static size_t block_size_for(uint8_t cipher) {
-    return cipher == AES_128_CBC ? 16 : 8;
-}
-
 /* Writes the cryptogram tag and length, returning the header length.
  *
  * A length of 128 or more needs the long form; written as a bare byte it would
@@ -33,22 +29,6 @@ static size_t encode_cryptogram_header(uint8_t* out, size_t value_len) {
     return 3;
 }
 
-/* Encrypts a padded plaintext block in place of the caller choosing a cipher. */
-static bool encrypt_blocks(
-    SecureMessaging* secure_messaging,
-    const uint8_t* clear,
-    size_t clear_len,
-    uint8_t* encrypted) {
-    if(secure_messaging->cipher == AES_128_CBC) {
-        return seos_worker_aes_encrypt(secure_messaging->PrivacyKey, clear_len, clear, encrypted);
-    }
-    if(secure_messaging->cipher == TWO_KEY_3DES_CBC_MODE) {
-        return seos_worker_des_encrypt(secure_messaging->PrivacyKey, clear_len, clear, encrypted);
-    }
-    FURI_LOG_W(TAG, "Cipher not matched");
-    return false;
-}
-
 /* Computes the checksum over the sequence counter, the command header if there
  * is one, and the protected data objects, each group padded to a block
  * boundary. Both directions use the same scope, so both use this. */
@@ -60,7 +40,7 @@ static bool checksum_objects(
     size_t objects_len,
     uint8_t* cmac) {
     uint8_t cipher = secure_messaging->cipher;
-    size_t block_size = block_size_for(cipher);
+    size_t block_size = seos_cipher_block_size(cipher);
     uint8_t* context = cipher == AES_128_CBC ? secure_messaging->aesContext :
                                                secure_messaging->desContext;
 
@@ -93,16 +73,13 @@ static bool checksum_objects(
     memcpy(input + input_len, padding, block_size - remainder);
     input_len += block_size - remainder;
 
-    if(cipher == AES_128_CBC) {
-        return aes_cmac(
-            secure_messaging->CMACKey, sizeof(secure_messaging->CMACKey), input, input_len, cmac);
-    }
-    if(cipher == TWO_KEY_3DES_CBC_MODE) {
-        return des_cmac(
-            secure_messaging->CMACKey, sizeof(secure_messaging->CMACKey), input, input_len, cmac);
-    }
-    FURI_LOG_W(TAG, "Cipher not matched");
-    return false;
+    return seos_cipher_cmac(
+        cipher,
+        secure_messaging->CMACKey,
+        sizeof(secure_messaging->CMACKey),
+        input,
+        input_len,
+        cmac);
 }
 
 /* Reads a data object header at `offset`, reporting where its value starts and
@@ -241,7 +218,7 @@ static bool unwrap_cryptogram(
         return false;
     }
 
-    size_t block_size = block_size_for(secure_messaging->cipher);
+    size_t block_size = seos_cipher_block_size(secure_messaging->cipher);
     if(value_len == 0 || value_len > clear_cap || (value_len % block_size) != 0) {
         FURI_LOG_W(TAG, "Invalid cryptogram length (%d)", value_len);
         return false;
@@ -250,17 +227,8 @@ static bool unwrap_cryptogram(
     const uint8_t* encrypted = data + value_offset;
     memset(clear, 0, clear_cap);
 
-    bool decrypted = false;
-    if(secure_messaging->cipher == AES_128_CBC) {
-        decrypted =
-            seos_worker_aes_decrypt(secure_messaging->PrivacyKey, value_len, encrypted, clear);
-    } else if(secure_messaging->cipher == TWO_KEY_3DES_CBC_MODE) {
-        decrypted =
-            seos_worker_des_decrypt(secure_messaging->PrivacyKey, value_len, encrypted, clear);
-    } else {
-        FURI_LOG_W(TAG, "Cipher not matched");
-    }
-    if(!decrypted) {
+    if(!seos_cipher_decrypt(
+           secure_messaging->cipher, secure_messaging->PrivacyKey, value_len, encrypted, clear)) {
         return false;
     }
 
@@ -427,7 +395,7 @@ bool secure_messaging_wrap_apdu(
     size_t apdu_header_len,
     BitBuffer* tx_buffer) {
     uint8_t cipher = secure_messaging->cipher;
-    size_t block_size = block_size_for(cipher);
+    size_t block_size = seos_cipher_block_size(cipher);
 
     uint8_t clear[SECURE_MESSAGING_MAX_SIZE];
     size_t clear_len = pad_message(message, message_len, block_size, clear, sizeof(clear));
@@ -439,7 +407,8 @@ bool secure_messaging_wrap_apdu(
     secure_messaging_increment_context(secure_messaging);
 
     uint8_t encrypted[SECURE_MESSAGING_MAX_SIZE];
-    if(!encrypt_blocks(secure_messaging, clear, clear_len, encrypted)) {
+    if(!seos_cipher_encrypt(
+           secure_messaging->cipher, secure_messaging->PrivacyKey, clear_len, clear, encrypted)) {
         return false;
     }
 
@@ -606,7 +575,7 @@ bool secure_messaging_wrap_rapdu(
     size_t message_len,
     uint16_t status_word,
     BitBuffer* tx_buffer) {
-    size_t block_size = block_size_for(secure_messaging->cipher);
+    size_t block_size = seos_cipher_block_size(secure_messaging->cipher);
 
     uint8_t objects[SECURE_MESSAGING_OBJECTS_SIZE];
     size_t objects_len = 0;
@@ -622,7 +591,12 @@ bool secure_messaging_wrap_rapdu(
         secure_messaging_increment_context(secure_messaging);
 
         uint8_t encrypted[SECURE_MESSAGING_MAX_SIZE];
-        if(!encrypt_blocks(secure_messaging, clear, clear_len, encrypted)) {
+        if(!seos_cipher_encrypt(
+               secure_messaging->cipher,
+               secure_messaging->PrivacyKey,
+               clear_len,
+               clear,
+               encrypted)) {
             return false;
         }
 

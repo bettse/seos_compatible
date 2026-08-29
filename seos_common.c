@@ -84,21 +84,43 @@ void seos_worker_diversify_key(
     FURI_LOG_D(TAG, "Diversified %s key", is_encryption ? "Encrypt" : "Mac");
 }
 
+/* One CBC pass from a zero IV, for either cipher. */
+static bool
+    cbc(bool aes, bool encrypt, uint8_t key[16], size_t length, const uint8_t* in, uint8_t* out) {
+    uint8_t iv[16];
+    memset(iv, 0, sizeof(iv));
+    int rtn;
+
+    if(aes) {
+        mbedtls_aes_context ctx;
+        mbedtls_aes_init(&ctx);
+        rtn = encrypt ? mbedtls_aes_setkey_enc(&ctx, key, 128) :
+                        mbedtls_aes_setkey_dec(&ctx, key, 128);
+        if(rtn == 0) {
+            rtn = mbedtls_aes_crypt_cbc(
+                &ctx, encrypt ? MBEDTLS_AES_ENCRYPT : MBEDTLS_AES_DECRYPT, length, iv, in, out);
+        }
+        mbedtls_aes_free(&ctx);
+    } else {
+        mbedtls_des3_context ctx;
+        mbedtls_des3_init(&ctx);
+        rtn = encrypt ? mbedtls_des3_set2key_enc(&ctx, key) : mbedtls_des3_set2key_dec(&ctx, key);
+        if(rtn == 0) {
+            rtn = mbedtls_des3_crypt_cbc(
+                &ctx, encrypt ? MBEDTLS_DES_ENCRYPT : MBEDTLS_DES_DECRYPT, length, iv, in, out);
+        }
+        mbedtls_des3_free(&ctx);
+    }
+
+    return rtn == 0;
+}
+
 bool seos_worker_aes_decrypt(
     uint8_t key[16],
     size_t length,
     const uint8_t* encrypted,
     uint8_t* clear) {
-    uint8_t iv[16];
-    memset(iv, 0, sizeof(iv));
-    mbedtls_aes_context ctx;
-    mbedtls_aes_init(&ctx);
-    int rtn = mbedtls_aes_setkey_dec(&ctx, key, 128);
-    if(rtn == 0) {
-        rtn = mbedtls_aes_crypt_cbc(&ctx, MBEDTLS_AES_DECRYPT, length, iv, encrypted, clear);
-    }
-    mbedtls_aes_free(&ctx);
-    return rtn == 0;
+    return cbc(true, false, key, length, encrypted, clear);
 }
 
 bool seos_worker_des_decrypt(
@@ -106,16 +128,7 @@ bool seos_worker_des_decrypt(
     size_t length,
     const uint8_t* encrypted,
     uint8_t* clear) {
-    uint8_t iv[8];
-    memset(iv, 0, sizeof(iv));
-    mbedtls_des3_context ctx;
-    mbedtls_des3_init(&ctx);
-    int rtn = mbedtls_des3_set2key_dec(&ctx, key);
-    if(rtn == 0) {
-        rtn = mbedtls_des3_crypt_cbc(&ctx, MBEDTLS_DES_DECRYPT, length, iv, encrypted, clear);
-    }
-    mbedtls_des3_free(&ctx);
-    return rtn == 0;
+    return cbc(false, false, key, length, encrypted, clear);
 }
 
 bool seos_worker_aes_encrypt(
@@ -123,16 +136,7 @@ bool seos_worker_aes_encrypt(
     size_t length,
     const uint8_t* clear,
     uint8_t* encrypted) {
-    uint8_t iv[16];
-    memset(iv, 0, sizeof(iv));
-    mbedtls_aes_context ctx;
-    mbedtls_aes_init(&ctx);
-    int rtn = mbedtls_aes_setkey_enc(&ctx, key, 128);
-    if(rtn == 0) {
-        rtn = mbedtls_aes_crypt_cbc(&ctx, MBEDTLS_AES_ENCRYPT, length, iv, clear, encrypted);
-    }
-    mbedtls_aes_free(&ctx);
-    return rtn == 0;
+    return cbc(true, true, key, length, clear, encrypted);
 }
 
 bool seos_worker_des_encrypt(
@@ -140,14 +144,48 @@ bool seos_worker_des_encrypt(
     size_t length,
     const uint8_t* clear,
     uint8_t* encrypted) {
-    uint8_t iv[8];
-    memset(iv, 0, sizeof(iv));
-    mbedtls_des3_context ctx;
-    mbedtls_des3_init(&ctx);
-    int rtn = mbedtls_des3_set2key_enc(&ctx, key);
-    if(rtn == 0) {
-        rtn = mbedtls_des3_crypt_cbc(&ctx, MBEDTLS_DES_ENCRYPT, length, iv, clear, encrypted);
-    }
-    mbedtls_des3_free(&ctx);
-    return rtn == 0;
+    return cbc(false, true, key, length, clear, encrypted);
+}
+
+size_t seos_cipher_block_size(uint8_t cipher) {
+    if(cipher == AES_128_CBC) return 16;
+    if(cipher == TWO_KEY_3DES_CBC_MODE) return 8;
+    return 0;
+}
+
+bool seos_cipher_encrypt(
+    uint8_t cipher,
+    uint8_t key[16],
+    size_t length,
+    const uint8_t* clear,
+    uint8_t* encrypted) {
+    if(cipher == AES_128_CBC) return cbc(true, true, key, length, clear, encrypted);
+    if(cipher == TWO_KEY_3DES_CBC_MODE) return cbc(false, true, key, length, clear, encrypted);
+    FURI_LOG_W("SeosCommon", "Cipher not matched (%d)", cipher);
+    return false;
+}
+
+bool seos_cipher_decrypt(
+    uint8_t cipher,
+    uint8_t key[16],
+    size_t length,
+    const uint8_t* encrypted,
+    uint8_t* clear) {
+    if(cipher == AES_128_CBC) return cbc(true, false, key, length, encrypted, clear);
+    if(cipher == TWO_KEY_3DES_CBC_MODE) return cbc(false, false, key, length, encrypted, clear);
+    FURI_LOG_W("SeosCommon", "Cipher not matched (%d)", cipher);
+    return false;
+}
+
+bool seos_cipher_cmac(
+    uint8_t cipher,
+    uint8_t* key,
+    size_t key_len,
+    uint8_t* message,
+    size_t message_len,
+    uint8_t* cmac) {
+    if(cipher == AES_128_CBC) return aes_cmac(key, key_len, message, message_len, cmac);
+    if(cipher == TWO_KEY_3DES_CBC_MODE) return des_cmac(key, key_len, message, message_len, cmac);
+    FURI_LOG_W("SeosCommon", "Cipher not matched (%d)", cipher);
+    return false;
 }

@@ -87,6 +87,36 @@ void seos_worker_diversify_key(
     bool is_encryption,
     uint8_t* div_key);
 
+/* Block size of a cipher, in bytes. Zero if it is not one we know. */
+size_t seos_cipher_block_size(uint8_t cipher);
+
+/* Encrypt, decrypt and authenticate under whichever cipher a session agreed.
+ *
+ * Callers had been writing the same three-armed ladder at every use; these
+ * carry it once, and return false for a cipher they do not know rather than
+ * quietly leaving the output as it was. */
+bool seos_cipher_encrypt(
+    uint8_t cipher,
+    uint8_t key[16],
+    size_t length,
+    const uint8_t* clear,
+    uint8_t* encrypted);
+
+bool seos_cipher_decrypt(
+    uint8_t cipher,
+    uint8_t key[16],
+    size_t length,
+    const uint8_t* encrypted,
+    uint8_t* clear);
+
+bool seos_cipher_cmac(
+    uint8_t cipher,
+    uint8_t* key,
+    size_t key_len,
+    uint8_t* message,
+    size_t message_len,
+    uint8_t* cmac);
+
 /* The cipher wrappers return false on a bad key or a length that is not a
  * whole number of blocks. The output buffer is untouched in that case. */
 bool seos_worker_aes_decrypt(

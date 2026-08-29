@@ -90,12 +90,13 @@ bool seos_emulator_general_authenticate_2(
     }
 
     uint8_t cmac[16];
-    if(params->cipher == AES_128_CBC) {
-        aes_cmac(params->auth_key, sizeof(params->auth_key), cryptogram, encrypted_len, cmac);
-    } else if(params->cipher == TWO_KEY_3DES_CBC_MODE) {
-        des_cmac(params->auth_key, sizeof(params->auth_key), cryptogram, encrypted_len, cmac);
-    } else {
-        FURI_LOG_W(TAG, "Cipher not matched");
+    if(!seos_cipher_cmac(
+           params->cipher,
+           params->auth_key,
+           sizeof(params->auth_key),
+           cryptogram,
+           encrypted_len,
+           cmac)) {
         return false;
     }
 
@@ -105,12 +106,8 @@ bool seos_emulator_general_authenticate_2(
     }
 
     uint8_t clear[32];
-    if(params->cipher == AES_128_CBC) {
-        seos_worker_aes_decrypt(params->priv_key, encrypted_len, cryptogram, clear);
-    } else if(params->cipher == TWO_KEY_3DES_CBC_MODE) {
-        seos_worker_des_decrypt(params->priv_key, encrypted_len, cryptogram, clear);
-    } else {
-        FURI_LOG_W(TAG, "Cipher not matched");
+    if(!seos_cipher_decrypt(params->cipher, params->priv_key, encrypted_len, cryptogram, clear)) {
+        return false;
     }
 
     size_t index = 0;
@@ -137,14 +134,15 @@ bool seos_emulator_general_authenticate_2(
     index += sizeof(params->rNonce);
 
     uint8_t encrypted[32];
-    if(params->cipher == AES_128_CBC) {
-        seos_worker_aes_encrypt(params->priv_key, sizeof(clear), clear, encrypted);
-        aes_cmac(params->auth_key, sizeof(params->auth_key), encrypted, sizeof(encrypted), cmac);
-    } else if(params->cipher == TWO_KEY_3DES_CBC_MODE) {
-        seos_worker_des_encrypt(params->priv_key, sizeof(clear), clear, encrypted);
-        des_cmac(params->auth_key, sizeof(params->auth_key), encrypted, sizeof(encrypted), cmac);
-    } else {
-        FURI_LOG_W(TAG, "Cipher not matched");
+    if(!seos_cipher_encrypt(params->cipher, params->priv_key, sizeof(clear), clear, encrypted) ||
+       !seos_cipher_cmac(
+           params->cipher,
+           params->auth_key,
+           sizeof(params->auth_key),
+           encrypted,
+           sizeof(encrypted),
+           cmac)) {
+        return false;
     }
 
     bit_buffer_append_bytes(tx_buffer, response_header, sizeof(response_header));
@@ -354,16 +352,11 @@ void seos_reader_generate_cryptogram(
     index += sizeof(params->cNonce);
 
     uint8_t cmac[16];
-    if(params->cipher == AES_128_CBC) {
-        seos_worker_aes_encrypt(params->priv_key, sizeof(clear), clear, cryptogram);
-
-        aes_cmac(params->auth_key, sizeof(params->auth_key), cryptogram, index, cmac);
-    } else if(params->cipher == TWO_KEY_3DES_CBC_MODE) {
-        seos_worker_des_encrypt(params->priv_key, sizeof(clear), clear, cryptogram);
-
-        des_cmac(params->auth_key, sizeof(params->auth_key), cryptogram, index, cmac);
-    } else {
-        FURI_LOG_W(TAG, "Cipher not matched");
+    memset(cmac, 0, sizeof(cmac));
+    if(!seos_cipher_encrypt(params->cipher, params->priv_key, sizeof(clear), clear, cryptogram) ||
+       !seos_cipher_cmac(
+           params->cipher, params->auth_key, sizeof(params->auth_key), cryptogram, index, cmac)) {
+        return;
     }
     memcpy(cryptogram + sizeof(clear), cmac, SEOS_WORKER_CMAC_SIZE);
 }
@@ -373,14 +366,14 @@ bool seos_reader_verify_cryptogram(AuthParameters* params, const uint8_t* crypto
     size_t encrypted_len = 32;
     uint8_t* mac = (uint8_t*)cryptogram + encrypted_len;
     uint8_t cmac[16];
-    if(params->cipher == AES_128_CBC) {
-        aes_cmac(
-            params->auth_key, sizeof(params->auth_key), (uint8_t*)cryptogram, encrypted_len, cmac);
-    } else if(params->cipher == TWO_KEY_3DES_CBC_MODE) {
-        des_cmac(
-            params->auth_key, sizeof(params->auth_key), (uint8_t*)cryptogram, encrypted_len, cmac);
-    } else {
-        FURI_LOG_W(TAG, "Cipher not matched");
+    if(!seos_cipher_cmac(
+           params->cipher,
+           params->auth_key,
+           sizeof(params->auth_key),
+           (uint8_t*)cryptogram,
+           encrypted_len,
+           cmac)) {
+        return false;
     }
 
     if(memcmp(cmac, mac, SEOS_WORKER_CMAC_SIZE) != 0) {
@@ -390,12 +383,8 @@ bool seos_reader_verify_cryptogram(AuthParameters* params, const uint8_t* crypto
 
     uint8_t clear[32];
     memset(clear, 0, sizeof(clear));
-    if(params->cipher == AES_128_CBC) {
-        seos_worker_aes_decrypt(params->priv_key, encrypted_len, cryptogram, clear);
-    } else if(params->cipher == TWO_KEY_3DES_CBC_MODE) {
-        seos_worker_des_decrypt(params->priv_key, encrypted_len, cryptogram, clear);
-    } else {
-        FURI_LOG_W(TAG, "Cipher not matched");
+    if(!seos_cipher_decrypt(params->cipher, params->priv_key, encrypted_len, cryptogram, clear)) {
+        return false;
     }
 
     // rndICC[8], UID[8], rNonce[16]
