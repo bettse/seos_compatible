@@ -7,8 +7,6 @@
 
 #define TAG "SeosEmulator"
 
-#define NAD_MASK 0x08
-
 #define DESFIRE_CLA 0x90
 
 static uint8_t select_header[] = {0x00, 0xa4, 0x04, 0x00};
@@ -286,6 +284,47 @@ NfcCommand seos_worker_listener_callback(NfcGenericEvent event, void* context) {
     case Iso14443_4aListenerEventTypeReceivedData:
         seos_emulator->rx_buffer = iso14443_4a_event->data->buffer;
         const uint8_t* rx_data = bit_buffer_get_data(seos_emulator->rx_buffer);
+        size_t rx_len = bit_buffer_get_size_bytes(seos_emulator->rx_buffer);
+
+#if !__has_include(<lib/nfc/protocols/type_4_tag/type_4_tag.h>)
+        /* A block that is not carrying a command is answered here rather than
+         * passed on: an R-block asks for the last answer again, and an S-block
+         * ends the exchange. Neither is an APDU. */
+        if(rx_len > 0) {
+            uint8_t rx_pcb = rx_data[0];
+            SeosIso14443_4BlockType block = seos_iso14443_4_classify(rx_pcb);
+
+            if(block == SeosIso14443_4BlockS) {
+                /* Answered with the same block, and the session is over. */
+                bit_buffer_append_byte(tx_buffer, seos_iso14443_4_response_pcb(rx_pcb, false));
+                iso14443_crc_append(Iso14443CrcTypeA, tx_buffer);
+                nfc_listener_tx(seos->nfc, tx_buffer);
+                if(seos_iso14443_4_is_deselect(rx_pcb)) {
+                    FURI_LOG_I(TAG, "Deselected");
+                }
+                break;
+            }
+
+            if(block == SeosIso14443_4BlockR) {
+                /* Nothing is held to resend, so this is answered with an empty
+                 * I-block rather than left unanswered. */
+                FURI_LOG_I(TAG, "Supervisory block with nothing to resend");
+                bit_buffer_append_byte(tx_buffer, seos_iso14443_4_response_pcb(rx_pcb, false));
+                bit_buffer_append_bytes(tx_buffer, SEOS_SW_SUCCESS, sizeof(SEOS_SW_SUCCESS));
+                iso14443_crc_append(Iso14443CrcTypeA, tx_buffer);
+                nfc_listener_tx(seos->nfc, tx_buffer);
+                break;
+            }
+
+            if(seos_iso14443_4_is_chaining(rx_pcb)) {
+                /* More of this command is still to come. Acknowledging it
+                 * would need the pieces held until the last, which nothing
+                 * here sends, so it is refused rather than half handled. */
+                FURI_LOG_W(TAG, "Chained command not handled");
+                break;
+            }
+        }
+#endif
 
         size_t offset = 0;
         size_t apdu_len = 0;
@@ -293,15 +332,19 @@ NfcCommand seos_worker_listener_callback(NfcGenericEvent event, void* context) {
             FURI_LOG_I(TAG, "No contents in frame");
             break;
         }
-        UNUSED(rx_data);
 
         seos_log_bitbuffer(TAG, "NFC received", seos_emulator->rx_buffer);
 
 #if __has_include(<lib/nfc/protocols/type_4_tag/type_4_tag.h>)
         // With PR #4242 ISO14443-4A response PCB is handled by firmware and not necessary in tx buffer
+        UNUSED(rx_len);
 #else
-        // Some ISO14443a framing I need to figure out
-        bit_buffer_append_bytes(tx_buffer, rx_data, offset);
+        /* Built rather than echoed: the block number has to match what was
+         * sent, and everything else in the byte is ours to decide. */
+        bit_buffer_append_byte(tx_buffer, seos_iso14443_4_response_pcb(rx_data[0], false));
+        if(rx_data[0] & SEOS_ISO14443_4_PCB_CID) {
+            bit_buffer_append_byte(tx_buffer, rx_data[1]);
+        }
 #endif
 
         if(seos->flow_mode == FLOW_CRED) {
@@ -314,7 +357,7 @@ NfcCommand seos_worker_listener_callback(NfcGenericEvent event, void* context) {
          * word to us. The secure messaging ones answer in full, including a
          * chaining or error status word that must not be written over. */
         if(!seos_emulator_response_complete &&
-           bit_buffer_get_size_bytes(seos_emulator->tx_buffer) > offset) {
+           bit_buffer_get_size_bytes(seos_emulator->tx_buffer) > sizeof(uint16_t)) {
             uint8_t* statusword = (uint8_t*)bit_buffer_get_data(tx_buffer) +
                                   bit_buffer_get_size_bytes(tx_buffer) - sizeof(uint16_t);
             bool has_status =
