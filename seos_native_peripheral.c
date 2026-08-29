@@ -258,14 +258,17 @@ void seos_native_peripheral_process_message_cred(
             secure_messaging_alloc(&seos_native_peripheral->params);
     } else if(memcmp(apdu, SEOS_SM_HEADER, sizeof(SEOS_SM_HEADER)) == 0) {
         if(seos_native_peripheral->secure_messaging) {
-            seos_sm_command_handle(
-                seos_native_peripheral->secure_messaging,
-                seos_native_peripheral->credential,
-                apdu,
-                apdu_len,
-                response,
-                seos_native_peripheral_sm_event,
-                seos_native_peripheral->seos);
+            if(!seos_sm_command_handle(
+                   seos_native_peripheral->secure_messaging,
+                   seos_native_peripheral->credential,
+                   apdu,
+                   apdu_len,
+                   response,
+                   seos_native_peripheral_sm_event,
+                   seos_native_peripheral->seos)) {
+                secure_messaging_free(seos_native_peripheral->secure_messaging);
+                seos_native_peripheral->secure_messaging = NULL;
+            }
         } else {
             uint8_t no_sm[] = {0x69, 0x88};
             bit_buffer_append_bytes(response, no_sm, sizeof(no_sm));

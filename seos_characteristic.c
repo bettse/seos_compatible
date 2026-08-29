@@ -268,14 +268,17 @@ void seos_characteristic_cred_flow(
     } else if(memcmp(apdu, SEOS_SM_HEADER, sizeof(SEOS_SM_HEADER)) == 0) {
         if(seos_characteristic->secure_messaging) {
             /* apdu already skips the leading BLE start byte. */
-            seos_sm_command_handle(
-                seos_characteristic->secure_messaging,
-                seos_characteristic->credential,
-                apdu,
-                bit_buffer_get_size_bytes(attribute_value) - 1,
-                payload,
-                seos_characteristic_sm_event,
-                seos_characteristic->seos);
+            if(!seos_sm_command_handle(
+                   seos_characteristic->secure_messaging,
+                   seos_characteristic->credential,
+                   apdu,
+                   bit_buffer_get_size_bytes(attribute_value) - 1,
+                   payload,
+                   seos_characteristic_sm_event,
+                   seos_characteristic->seos)) {
+                secure_messaging_free(seos_characteristic->secure_messaging);
+                seos_characteristic->secure_messaging = NULL;
+            }
         } else {
             uint8_t no_sm[] = {0x69, 0x88};
             bit_buffer_append_bytes(payload, no_sm, sizeof(no_sm));

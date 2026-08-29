@@ -135,14 +135,17 @@ void seos_central_notify(void* context, const uint8_t* buffer, size_t buffer_len
         seos_central->phase = REQUEST_SIO;
     } else if(memcmp(apdu, SEOS_SM_HEADER, sizeof(SEOS_SM_HEADER)) == 0) {
         if(seos_central->secure_messaging) {
-            seos_sm_command_handle(
-                seos_central->secure_messaging,
-                seos_central->credential,
-                apdu,
-                apdu_len,
-                response,
-                seos_central_sm_event,
-                seos_central->seos);
+            if(!seos_sm_command_handle(
+                   seos_central->secure_messaging,
+                   seos_central->credential,
+                   apdu,
+                   apdu_len,
+                   response,
+                   seos_central_sm_event,
+                   seos_central->seos)) {
+                secure_messaging_free(seos_central->secure_messaging);
+                seos_central->secure_messaging = NULL;
+            }
         } else {
             uint8_t no_sm[] = {0x69, 0x88};
             bit_buffer_append_bytes(response, no_sm, sizeof(no_sm));

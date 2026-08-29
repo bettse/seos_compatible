@@ -6,10 +6,38 @@
 
 const uint8_t SEOS_SM_HEADER[4] = {0x0c, 0xcb, 0x3f, 0xff};
 
-/* The tag list naming the SIO file. */
-static const uint8_t request_sio[] = {0x5c, 0x02, 0xff, 0x00};
+/* Tag of the file holding the SIO. */
+#define SIO_FILE_TAG 0xff00
 
-void seos_sm_command_handle(
+/* Data field forms. Only a tag list is supported; an extended header list is
+ * refused rather than answered wrongly. */
+#define DO_TAG_LIST             0x5c
+#define DO_EXTENDED_HEADER_LIST 0x4d
+
+/* Answers a command with no data, protected and then in the clear. */
+static void answer_status(SecureMessaging* secure_messaging, BitBuffer* tx, uint16_t status_word) {
+    if(!secure_messaging_wrap_rapdu(secure_messaging, NULL, 0, status_word, tx)) {
+        return;
+    }
+    bit_buffer_append_byte(tx, (uint8_t)(status_word >> 8));
+    bit_buffer_append_byte(tx, (uint8_t)(status_word & 0xff));
+}
+
+/* Reads the single tag a tag list names.
+ *
+ * Only one- and two-byte tags are allowed, and the list must name exactly one
+ * object and nothing else. */
+static bool parse_tag_list(const uint8_t* data, size_t data_len, uint16_t* tag) {
+    if(data_len < 3 || data[0] != DO_TAG_LIST) return false;
+
+    size_t tag_len = data[1];
+    if(tag_len < 1 || tag_len > 2 || data_len != 2 + tag_len) return false;
+
+    *tag = tag_len == 1 ? data[2] : (uint16_t)((data[2] << 8) | data[3]);
+    return true;
+}
+
+bool seos_sm_command_handle(
     SecureMessaging* secure_messaging,
     SeosCredential* credential,
     const uint8_t* apdu,
@@ -21,7 +49,7 @@ void seos_sm_command_handle(
     furi_assert(credential);
 
     if(apdu_len == 0) {
-        return;
+        return true;
     }
 
     /* Unwrapping replaces the contents, so work on a copy. */
@@ -30,35 +58,66 @@ void seos_sm_command_handle(
 
     seos_log_bitbuffer(TAG, "received(wrapped)", message);
     if(!secure_messaging_unwrap_apdu(secure_messaging, message)) {
-        FURI_LOG_W(TAG, "Could not unwrap secure message");
+        /* A secure messaging error is answered in the clear, and ends the
+         * session: the counters are no longer in step. */
+        uint16_t status_word = secure_messaging->last_error_sw;
+        if(status_word == 0) status_word = SECURE_MESSAGING_SW_INCORRECT_DO;
+        FURI_LOG_W(TAG, "Ending session after %04x", status_word);
+
+        bit_buffer_append_byte(tx, (uint8_t)(status_word >> 8));
+        bit_buffer_append_byte(tx, (uint8_t)(status_word & 0xff));
         bit_buffer_free(message);
-        return;
+        return false;
     }
     seos_log_bitbuffer(TAG, "received(clear)", message);
 
-    size_t message_len = bit_buffer_get_size_bytes(message);
-    if(message_len >= sizeof(request_sio) &&
-       memcmp(bit_buffer_get_data(message), request_sio, sizeof(request_sio)) == 0) {
-        if(on_event) {
-            on_event(event_context, SeosSmEventSioRequested);
+    uint16_t tag = 0;
+    if(!parse_tag_list(bit_buffer_get_data(message), bit_buffer_get_size_bytes(message), &tag)) {
+        uint8_t first = bit_buffer_get_size_bytes(message) > 0 ? bit_buffer_get_byte(message, 0) :
+                                                                 0;
+        if(first == DO_EXTENDED_HEADER_LIST) {
+            FURI_LOG_W(TAG, "Extended header lists are not supported");
+        } else {
+            FURI_LOG_W(TAG, "Malformed data field");
         }
-
-        BitBuffer* sio_file = bit_buffer_alloc(SEOS_WORKER_MAX_BUFFER_SIZE);
-        bit_buffer_append_bytes(sio_file, bit_buffer_get_data(message) + 2, 2); // fileId
-        bit_buffer_append_byte(sio_file, credential->sio_len);
-        bit_buffer_append_bytes(sio_file, credential->sio, credential->sio_len);
-
-        seos_log_bitbuffer(TAG, "send(clear)", sio_file);
-        if(secure_messaging_wrap_rapdu(
-               secure_messaging,
-               (uint8_t*)bit_buffer_get_data(sio_file),
-               bit_buffer_get_size_bytes(sio_file),
-               tx)) {
-            bit_buffer_append_bytes(tx, SEOS_SW_SUCCESS, sizeof(SEOS_SW_SUCCESS));
-        }
-
-        bit_buffer_free(sio_file);
+        answer_status(secure_messaging, tx, SEOS_SW_WRONG_DATA);
+        bit_buffer_free(message);
+        return true;
     }
 
+    if(tag != SIO_FILE_TAG) {
+        /* An object we do not hold is not an error: the answer simply carries
+         * no data. */
+        FURI_LOG_D(TAG, "No object with tag %04x", tag);
+        answer_status(secure_messaging, tx, SEOS_SW_SUCCESS_VALUE);
+        bit_buffer_free(message);
+        return true;
+    }
+
+    if(on_event) {
+        on_event(event_context, SeosSmEventSioRequested);
+    }
+
+    BitBuffer* sio_file = bit_buffer_alloc(SEOS_WORKER_MAX_BUFFER_SIZE);
+    bit_buffer_append_byte(sio_file, (uint8_t)(tag >> 8));
+    bit_buffer_append_byte(sio_file, (uint8_t)(tag & 0xff));
+    bit_buffer_append_byte(sio_file, credential->sio_len);
+    bit_buffer_append_bytes(sio_file, credential->sio, credential->sio_len);
+
+    seos_log_bitbuffer(TAG, "send(clear)", sio_file);
+    if(secure_messaging_wrap_rapdu(
+           secure_messaging,
+           (uint8_t*)bit_buffer_get_data(sio_file),
+           bit_buffer_get_size_bytes(sio_file),
+           SEOS_SW_SUCCESS_VALUE,
+           tx)) {
+        bit_buffer_append_bytes(tx, SEOS_SW_SUCCESS, sizeof(SEOS_SW_SUCCESS));
+    } else {
+        FURI_LOG_W(TAG, "SIO too long for one response");
+        answer_status(secure_messaging, tx, SEOS_SW_WRONG_DATA);
+    }
+
+    bit_buffer_free(sio_file);
     bit_buffer_free(message);
+    return true;
 }

@@ -456,6 +456,22 @@ bool secure_messaging_unwrap_rapdu(SecureMessaging* secure_messaging, BitBuffer*
         return false;
     }
 
+    /* Record the protected status word, and note that a response with no data
+     * carries no cryptogram at all. */
+    secure_messaging->last_response_sw = 0;
+    uint8_t first_tag = data[SECURE_MESSAGING_RAPDU_BODY_OFFSET];
+    if(first_tag == DO_STATUS) {
+        if(data_len < SECURE_MESSAGING_RAPDU_BODY_OFFSET + 4) {
+            secure_messaging->last_error_sw = SECURE_MESSAGING_SW_INCORRECT_DO;
+            return false;
+        }
+        secure_messaging->last_response_sw =
+            (uint16_t)((data[SECURE_MESSAGING_RAPDU_BODY_OFFSET + 2] << 8) |
+                       data[SECURE_MESSAGING_RAPDU_BODY_OFFSET + 3]);
+        bit_buffer_reset(rx_buffer);
+        return true;
+    }
+
     uint8_t clear[SECURE_MESSAGING_MAX_SIZE];
     size_t clear_len = 0;
     if(!unwrap_cryptogram(
@@ -468,6 +484,15 @@ bool secure_messaging_unwrap_rapdu(SecureMessaging* secure_messaging, BitBuffer*
            &clear_len)) {
         secure_messaging->last_error_sw = SECURE_MESSAGING_SW_INCORRECT_DO;
         return false;
+    }
+
+    /* The status object follows the cryptogram; objects_len spans both. */
+    if(objects_len >= 4) {
+        size_t status_offset = SECURE_MESSAGING_RAPDU_BODY_OFFSET + objects_len - 4;
+        if(data[status_offset] == DO_STATUS) {
+            secure_messaging->last_response_sw =
+                (uint16_t)((data[status_offset + 2] << 8) | data[status_offset + 3]);
+        }
     }
 
     bit_buffer_reset(rx_buffer);
@@ -536,35 +561,37 @@ bool secure_messaging_wrap_rapdu(
     SecureMessaging* secure_messaging,
     uint8_t* message,
     size_t message_len,
+    uint16_t status_word,
     BitBuffer* tx_buffer) {
     size_t block_size = block_size_for(secure_messaging->cipher);
 
-    uint8_t clear[SECURE_MESSAGING_MAX_SIZE];
-    size_t clear_len = pad_message(message, message_len, block_size, clear, sizeof(clear));
-    if(clear_len == 0) {
-        FURI_LOG_W(TAG, "Message too long to wrap (%d)", message_len);
-        return false;
-    }
-
-    secure_messaging_increment_context(secure_messaging);
-
-    uint8_t encrypted[SECURE_MESSAGING_MAX_SIZE];
-    if(!encrypt_blocks(secure_messaging, clear, clear_len, encrypted)) {
-        return false;
-    }
-
-    uint8_t cryptogram_header[CRYPTOGRAM_HEADER_MAX];
-    size_t cryptogram_header_len = encode_cryptogram_header(cryptogram_header, clear_len);
-
-    uint8_t checksum_prefix[] = {DO_CHECKSUM, SEOS_WORKER_CMAC_SIZE};
-    uint8_t protected_status[] = {DO_STATUS, 0x02, 0x90, 0x00};
-
     uint8_t objects[SECURE_MESSAGING_OBJECTS_SIZE];
     size_t objects_len = 0;
-    memcpy(objects, cryptogram_header, cryptogram_header_len);
-    objects_len += cryptogram_header_len;
-    memcpy(objects + objects_len, encrypted, clear_len);
-    objects_len += clear_len;
+
+    if(message_len > 0) {
+        uint8_t clear[SECURE_MESSAGING_MAX_SIZE];
+        size_t clear_len = pad_message(message, message_len, block_size, clear, sizeof(clear));
+        if(clear_len == 0) {
+            FURI_LOG_W(TAG, "Message too long to wrap (%d)", message_len);
+            return false;
+        }
+
+        secure_messaging_increment_context(secure_messaging);
+
+        uint8_t encrypted[SECURE_MESSAGING_MAX_SIZE];
+        if(!encrypt_blocks(secure_messaging, clear, clear_len, encrypted)) {
+            return false;
+        }
+
+        objects_len = encode_cryptogram_header(objects, clear_len);
+        memcpy(objects + objects_len, encrypted, clear_len);
+        objects_len += clear_len;
+    } else {
+        secure_messaging_increment_context(secure_messaging);
+    }
+
+    uint8_t protected_status[] = {
+        DO_STATUS, 0x02, (uint8_t)(status_word >> 8), (uint8_t)(status_word & 0xff)};
     memcpy(objects + objects_len, protected_status, sizeof(protected_status));
     objects_len += sizeof(protected_status);
 
@@ -573,9 +600,10 @@ bool secure_messaging_wrap_rapdu(
         return false;
     }
 
+    uint8_t checksum_prefix[] = {DO_CHECKSUM, SEOS_WORKER_CMAC_SIZE};
     bit_buffer_append_bytes(tx_buffer, objects, objects_len);
     bit_buffer_append_bytes(tx_buffer, checksum_prefix, sizeof(checksum_prefix));
     bit_buffer_append_bytes(tx_buffer, cmac, SEOS_WORKER_CMAC_SIZE);
-    // Success (9000) is appended by common code before transmission
+    // The same status word is appended in the clear by the caller
     return true;
 }

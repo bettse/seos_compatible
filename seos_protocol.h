@@ -14,6 +14,11 @@
  */
 
 /* Status words the exchange answers with. */
+#define SEOS_SW_SUCCESS_VALUE   0x9000
+#define SEOS_SW_WRONG_DATA      0x6a80
+#define SEOS_SW_WRONG_P1P2      0x6a86
+#define SEOS_SW_NOT_ENOUGH_ROOM 0x6a84
+
 extern const uint8_t SEOS_SW_SUCCESS[2];
 extern const uint8_t SEOS_SW_FILE_NOT_FOUND[2];
 

@@ -42,6 +42,8 @@ typedef struct {
     uint8_t desContext[8];
     /* Status word for the last message that failed to unwrap, or 0. */
     uint16_t last_error_sw;
+    /* Protected status word of the last response unwrapped, or 0. */
+    uint16_t last_response_sw;
 } SecureMessaging;
 
 SecureMessaging* secure_messaging_alloc(AuthParameters* params);
@@ -68,8 +70,12 @@ bool secure_messaging_wrap_apdu(
 bool secure_messaging_unwrap_apdu(SecureMessaging* secure_messaging, BitBuffer* rx_buffer);
 
 bool secure_messaging_unwrap_rapdu(SecureMessaging* secure_messaging, BitBuffer* rx_buffer);
+/* Wraps a response. `status_word` is carried in the protected status object
+ * and must match the one the caller sends in the clear. A response with no
+ * data omits the cryptogram rather than encrypting nothing. */
 bool secure_messaging_wrap_rapdu(
     SecureMessaging* secure_messaging,
     uint8_t* message,
     size_t message_len,
+    uint16_t status_word,
     BitBuffer* tx_buffer);

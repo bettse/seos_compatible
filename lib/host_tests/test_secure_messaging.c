@@ -7,6 +7,7 @@
 #include "munit.h"
 #include "test_helpers.h"
 
+#include <seos_protocol.h>
 #include <secure_messaging.h>
 
 #define RX_CAPACITY 256
@@ -71,7 +72,8 @@ static void round_trip_response(uint8_t cipher, uint8_t hash, size_t message_len
         message[i] = (uint8_t)(i * 3 + 9);
 
     BitBuffer* buffer = bit_buffer_alloc(RX_CAPACITY);
-    munit_assert_true(secure_messaging_wrap_rapdu(sender, message, message_len, buffer));
+    munit_assert_true(
+        secure_messaging_wrap_rapdu(sender, message, message_len, SEOS_SW_SUCCESS_VALUE, buffer));
     munit_assert_true(secure_messaging_unwrap_rapdu(receiver, buffer));
     munit_assert_size(bit_buffer_get_size_bytes(buffer), ==, message_len);
     munit_assert_memory_equal(message_len, bit_buffer_get_data(buffer), message);
@@ -132,7 +134,8 @@ static MunitResult test_long_form_length(const MunitParameter p[], void* d) {
     memset(message, 0xa5, sizeof(message));
 
     BitBuffer* buffer = bit_buffer_alloc(RX_CAPACITY);
-    munit_assert_true(secure_messaging_wrap_rapdu(sender, message, sizeof(message), buffer));
+    munit_assert_true(secure_messaging_wrap_rapdu(
+        sender, message, sizeof(message), SEOS_SW_SUCCESS_VALUE, buffer));
 
     /* 120 bytes plus a pad block is 128, which must be written as 81 80. */
     munit_assert_uint8(bit_buffer_get_byte(buffer, 0), ==, 0x85);
@@ -160,7 +163,8 @@ static MunitResult test_rejects_oversized_message(const MunitParameter p[], void
     memset(message, 0x11, sizeof(message));
 
     BitBuffer* buffer = bit_buffer_alloc(RX_CAPACITY);
-    munit_assert_false(secure_messaging_wrap_rapdu(sm, message, sizeof(message), buffer));
+    munit_assert_false(
+        secure_messaging_wrap_rapdu(sm, message, sizeof(message), SEOS_SW_SUCCESS_VALUE, buffer));
     munit_assert_size(bit_buffer_get_size_bytes(buffer), ==, 0);
 
     bit_buffer_free(buffer);
@@ -223,7 +227,8 @@ static MunitResult test_rejects_wrong_key(const MunitParameter p[], void* d) {
 
     uint8_t message[] = {0x5c, 0x02, 0xff, 0x00};
     BitBuffer* buffer = bit_buffer_alloc(RX_CAPACITY);
-    munit_assert_true(secure_messaging_wrap_rapdu(sender, message, sizeof(message), buffer));
+    munit_assert_true(secure_messaging_wrap_rapdu(
+        sender, message, sizeof(message), SEOS_SW_SUCCESS_VALUE, buffer));
     munit_assert_false(secure_messaging_unwrap_rapdu(wrong_key, buffer));
 
     bit_buffer_free(buffer);

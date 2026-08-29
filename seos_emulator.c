@@ -211,14 +211,17 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
     } else if(memcmp(apdu, SEOS_SM_HEADER, sizeof(SEOS_SM_HEADER)) == 0) {
         if(seos_emulator->secure_messaging) {
             size_t rx_len = bit_buffer_get_size_bytes(seos_emulator->rx_buffer);
-            seos_sm_command_handle(
-                seos_emulator->secure_messaging,
-                seos_emulator->credential,
-                apdu,
-                rx_len - offset,
-                tx_buffer,
-                seos_emulator_sm_event,
-                seos);
+            if(!seos_sm_command_handle(
+                   seos_emulator->secure_messaging,
+                   seos_emulator->credential,
+                   apdu,
+                   rx_len - offset,
+                   tx_buffer,
+                   seos_emulator_sm_event,
+                   seos)) {
+                secure_messaging_free(seos_emulator->secure_messaging);
+                seos_emulator->secure_messaging = NULL;
+            }
         } else {
             uint8_t no_sm[] = {0x69, 0x88};
             bit_buffer_append_bytes(tx_buffer, no_sm, sizeof(no_sm));
