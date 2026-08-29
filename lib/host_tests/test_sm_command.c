@@ -45,11 +45,39 @@ static SeosCredential credential_with_sio(size_t sio_len) {
  * back the plaintext the reader recovers from the answer. */
 static uint16_t last_status_word;
 static uint16_t last_protected_status_word;
+static unsigned last_frames;
+
+static size_t exchange_framed(
+    SeosCredential* credential,
+    const uint8_t* plain_command,
+    size_t plain_command_len,
+    size_t max_frame_len,
+    uint8_t* recovered,
+    size_t recovered_cap,
+    EventLog* log);
 
 static size_t exchange(
     SeosCredential* credential,
     const uint8_t* plain_command,
     size_t plain_command_len,
+    uint8_t* recovered,
+    size_t recovered_cap,
+    EventLog* log) {
+    return exchange_framed(
+        credential,
+        plain_command,
+        plain_command_len,
+        SEOS_SM_MAX_FRAME,
+        recovered,
+        recovered_cap,
+        log);
+}
+
+static size_t exchange_framed(
+    SeosCredential* credential,
+    const uint8_t* plain_command,
+    size_t plain_command_len,
+    size_t max_frame_len,
     uint8_t* recovered,
     size_t recovered_cap,
     EventLog* log) {
@@ -74,9 +102,33 @@ static size_t exchange(
         credential,
         bit_buffer_get_data(wire),
         bit_buffer_get_size_bytes(wire),
+        max_frame_len,
         answer,
         record_event,
         log);
+
+    /* Collect the pieces of a chained answer, as a reader would. */
+    BitBuffer* collected = bit_buffer_alloc(BUFFER_CAPACITY);
+    last_frames = 0;
+    while(true) {
+        size_t len = bit_buffer_get_size_bytes(answer);
+        munit_assert_size(len, >=, 2);
+        munit_assert_size(len, <=, max_frame_len);
+        last_frames++;
+
+        uint8_t sw1 = bit_buffer_get_byte(answer, len - 2);
+        uint8_t sw2 = bit_buffer_get_byte(answer, len - 1);
+        bit_buffer_append_bytes(collected, bit_buffer_get_data(answer), len - 2);
+        if(sw1 != 0x61) {
+            bit_buffer_append_byte(collected, sw1);
+            bit_buffer_append_byte(collected, sw2);
+            break;
+        }
+        bit_buffer_reset(answer);
+        seos_sm_command_get_response(card, max_frame_len, answer);
+    }
+    bit_buffer_free(answer);
+    answer = collected;
 
     size_t recovered_len = 0;
     last_status_word = 0;
@@ -210,7 +262,7 @@ static MunitResult test_unwrappable_command(const MunitParameter p[], void* d) {
     uint8_t garbage[] = {0x0c, 0xcb, 0x3f, 0xff, 0x04, 0x85, 0x02, 0x00, 0x00};
     BitBuffer* answer = bit_buffer_alloc(BUFFER_CAPACITY);
     munit_assert_false(seos_sm_command_handle(
-        card, &credential, garbage, sizeof(garbage), answer, record_event, &log));
+        card, &credential, garbage, sizeof(garbage), SEOS_SM_MAX_FRAME, answer, record_event, &log));
 
     /* The error is answered unprotected, and nothing else is sent. */
     munit_assert_size(bit_buffer_get_size_bytes(answer), ==, 2);
@@ -232,11 +284,123 @@ static MunitResult test_empty_command(const MunitParameter p[], void* d) {
     EventLog log = {0};
 
     BitBuffer* answer = bit_buffer_alloc(BUFFER_CAPACITY);
-    munit_assert_true(
-        seos_sm_command_handle(card, &credential, NULL, 0, answer, record_event, &log));
+    munit_assert_true(seos_sm_command_handle(
+        card, &credential, NULL, 0, SEOS_SM_MAX_FRAME, answer, record_event, &log));
     munit_assert_size(bit_buffer_get_size_bytes(answer), ==, 0);
 
     bit_buffer_free(answer);
+    secure_messaging_free(card);
+    return MUNIT_OK;
+}
+
+/* A SIO too large for one frame comes back in pieces and reassembles. */
+static MunitResult test_chained_sio(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    SeosCredential credential = credential_with_sio(120);
+    uint8_t request[] = {0x5c, 0x02, 0xff, 0x00};
+    uint8_t recovered[BUFFER_CAPACITY];
+    EventLog log = {0};
+
+    size_t len =
+        exchange(&credential, request, sizeof(request), recovered, sizeof(recovered), &log);
+
+    munit_assert_uint(last_frames, >, 1);
+    munit_assert_size(len, ==, 3 + credential.sio_len);
+    munit_assert_memory_equal(credential.sio_len, recovered + 3, credential.sio);
+    munit_assert_uint16(last_status_word, ==, SEOS_SW_SUCCESS_VALUE);
+    return MUNIT_OK;
+}
+
+/* A small frame budget splits even a short answer, and it still reassembles. */
+static MunitResult test_chaining_across_many_frames(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    SeosCredential credential = credential_with_sio(40);
+    uint8_t request[] = {0x5c, 0x02, 0xff, 0x00};
+    uint8_t recovered[BUFFER_CAPACITY];
+    EventLog log = {0};
+
+    size_t len = exchange_framed(
+        &credential, request, sizeof(request), 24, recovered, sizeof(recovered), &log);
+
+    munit_assert_uint(last_frames, >, 2);
+    munit_assert_size(len, ==, 3 + credential.sio_len);
+    munit_assert_memory_equal(credential.sio_len, recovered + 3, credential.sio);
+    return MUNIT_OK;
+}
+
+/* Asking to continue when nothing is pending is a bad request, not a crash. */
+static MunitResult test_get_response_without_pending(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    AuthParameters params = command_params();
+    SecureMessaging* card = secure_messaging_alloc(&params);
+
+    BitBuffer* answer = bit_buffer_alloc(BUFFER_CAPACITY);
+    seos_sm_command_get_response(card, SEOS_SM_MAX_FRAME, answer);
+
+    munit_assert_size(bit_buffer_get_size_bytes(answer), ==, 2);
+    munit_assert_uint8(bit_buffer_get_byte(answer, 0), ==, 0x6a);
+    munit_assert_uint8(bit_buffer_get_byte(answer, 1), ==, 0x86);
+
+    bit_buffer_free(answer);
+    secure_messaging_free(card);
+    return MUNIT_OK;
+}
+
+/* A new command drops a response the reader never collected. */
+static MunitResult test_new_command_drops_pending(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    SeosCredential credential = credential_with_sio(120);
+    AuthParameters params = command_params();
+    SecureMessaging* reader = secure_messaging_alloc(&params);
+    SecureMessaging* card = secure_messaging_alloc(&params);
+    EventLog log = {0};
+
+    uint8_t request[] = {0x5c, 0x02, 0xff, 0x00};
+    BitBuffer* wire = bit_buffer_alloc(BUFFER_CAPACITY);
+    BitBuffer* answer = bit_buffer_alloc(BUFFER_CAPACITY);
+
+    munit_assert_true(secure_messaging_wrap_apdu(
+        reader, request, sizeof(request), (uint8_t*)SEOS_SM_HEADER, sizeof(SEOS_SM_HEADER), wire));
+    seos_sm_command_handle(
+        card,
+        &credential,
+        bit_buffer_get_data(wire),
+        bit_buffer_get_size_bytes(wire),
+        SEOS_SM_MAX_FRAME,
+        answer,
+        record_event,
+        &log);
+    munit_assert_size(card->pending_len, >, 0);
+
+    /* Walk away without collecting it. The counter still advanced for the
+     * response the reader would have unwrapped, so account for that before
+     * sending the next command. */
+    secure_messaging_increment_context(reader);
+    bit_buffer_reset(answer);
+    bit_buffer_reset(wire);
+    munit_assert_true(secure_messaging_wrap_apdu(
+        reader, request, sizeof(request), (uint8_t*)SEOS_SM_HEADER, sizeof(SEOS_SM_HEADER), wire));
+    seos_sm_command_handle(
+        card,
+        &credential,
+        bit_buffer_get_data(wire),
+        bit_buffer_get_size_bytes(wire),
+        SEOS_SM_MAX_FRAME,
+        answer,
+        record_event,
+        &log);
+
+    /* The card served the new command, and what is pending belongs to it. */
+    munit_assert_uint(log.sio_requested, ==, 2);
+    munit_assert_size(card->pending_offset, ==, 0);
+
+    bit_buffer_free(wire);
+    bit_buffer_free(answer);
+    secure_messaging_free(reader);
     secure_messaging_free(card);
     return MUNIT_OK;
 }
@@ -252,6 +416,25 @@ static MunitTest test_sm_command_cases[] = {
      MUNIT_TEST_OPTION_NONE,
      NULL},
     {(char*)"/sio/multiple-tags", test_multiple_tags, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
+    {(char*)"/chaining/large-sio", test_chained_sio, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
+    {(char*)"/chaining/many-frames",
+     test_chaining_across_many_frames,
+     NULL,
+     NULL,
+     MUNIT_TEST_OPTION_NONE,
+     NULL},
+    {(char*)"/chaining/nothing-pending",
+     test_get_response_without_pending,
+     NULL,
+     NULL,
+     MUNIT_TEST_OPTION_NONE,
+     NULL},
+    {(char*)"/chaining/superseded",
+     test_new_command_drops_pending,
+     NULL,
+     NULL,
+     MUNIT_TEST_OPTION_NONE,
+     NULL},
     {(char*)"/reject/unwrappable",
      test_unwrappable_command,
      NULL,

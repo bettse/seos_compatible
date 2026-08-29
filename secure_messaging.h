@@ -12,15 +12,17 @@
 #include "aes_cmac.h"
 #include "des_cmac.h"
 
-#define SECURE_MESSAGING_MAX_SIZE 128
+/* Largest plaintext a single cryptogram carries. A full SIO plus the file id
+ * and length ahead of it needs more than the file itself. */
+#define SECURE_MESSAGING_MAX_SIZE 192
 
 /* Room for the sequence counter, a padded command header, the largest
  * cryptogram and its objects, each group padded to a block boundary. */
-#define SECURE_MESSAGING_CMAC_INPUT_SIZE 192
+#define SECURE_MESSAGING_CMAC_INPUT_SIZE 256
 
 /* Largest span of protected objects: a cryptogram header, the cryptogram, and
  * the protected status word. */
-#define SECURE_MESSAGING_OBJECTS_SIZE 144
+#define SECURE_MESSAGING_OBJECTS_SIZE 208
 
 /* The command header covered by the checksum. */
 #define SECURE_MESSAGING_APDU_HEADER_LEN 4
@@ -44,11 +46,34 @@ typedef struct {
     uint16_t last_error_sw;
     /* Protected status word of the last response unwrapped, or 0. */
     uint16_t last_response_sw;
+
+    /* Remainder of a response too long for one frame, waiting to be asked
+     * for. Allocated only when a response actually needs chaining. */
+    uint8_t* pending;
+    size_t pending_len;
+    size_t pending_offset;
 } SecureMessaging;
 
 SecureMessaging* secure_messaging_alloc(AuthParameters* params);
 
 void secure_messaging_free(SecureMessaging* secure_messaging);
+
+/* Holds a response that will be handed out a frame at a time. Replaces any
+ * response already pending. */
+bool secure_messaging_set_pending(
+    SecureMessaging* secure_messaging,
+    const uint8_t* data,
+    size_t len);
+
+/* Copies the next piece of a pending response into `out`, at most `max_len`
+ * bytes, and reports how much is left after it. */
+size_t secure_messaging_take_pending(
+    SecureMessaging* secure_messaging,
+    uint8_t* out,
+    size_t max_len,
+    size_t* remaining);
+
+void secure_messaging_clear_pending(SecureMessaging* secure_messaging);
 
 void secure_messaging_increment_context(SecureMessaging* secure_messaging);
 

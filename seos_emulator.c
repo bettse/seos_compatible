@@ -208,6 +208,14 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
         view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventAuthenticated);
         // Prepare for future communication
         seos_emulator->secure_messaging = secure_messaging_alloc(&seos_emulator->params);
+    } else if(memcmp(apdu, SEOS_GET_RESPONSE, sizeof(SEOS_GET_RESPONSE)) == 0) {
+        if(seos_emulator->secure_messaging) {
+            seos_sm_command_get_response(
+                seos_emulator->secure_messaging, SEOS_SM_MAX_FRAME, tx_buffer);
+        } else {
+            uint8_t no_sm[] = {0x69, 0x88};
+            bit_buffer_append_bytes(tx_buffer, no_sm, sizeof(no_sm));
+        }
     } else if(memcmp(apdu, SEOS_SM_HEADER, sizeof(SEOS_SM_HEADER)) == 0) {
         if(seos_emulator->secure_messaging) {
             size_t rx_len = bit_buffer_get_size_bytes(seos_emulator->rx_buffer);
@@ -216,6 +224,7 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
                    seos_emulator->credential,
                    apdu,
                    rx_len - offset,
+                   SEOS_SM_MAX_FRAME,
                    tx_buffer,
                    seos_emulator_sm_event,
                    seos)) {

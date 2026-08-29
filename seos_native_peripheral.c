@@ -256,6 +256,14 @@ void seos_native_peripheral_process_message_cred(
         // Prepare for future communication
         seos_native_peripheral->secure_messaging =
             secure_messaging_alloc(&seos_native_peripheral->params);
+    } else if(memcmp(apdu, SEOS_GET_RESPONSE, sizeof(SEOS_GET_RESPONSE)) == 0) {
+        if(seos_native_peripheral->secure_messaging) {
+            seos_sm_command_get_response(
+                seos_native_peripheral->secure_messaging, SEOS_SM_MAX_FRAME, response);
+        } else {
+            uint8_t no_sm[] = {0x69, 0x88};
+            bit_buffer_append_bytes(response, no_sm, sizeof(no_sm));
+        }
     } else if(memcmp(apdu, SEOS_SM_HEADER, sizeof(SEOS_SM_HEADER)) == 0) {
         if(seos_native_peripheral->secure_messaging) {
             if(!seos_sm_command_handle(
@@ -263,6 +271,7 @@ void seos_native_peripheral_process_message_cred(
                    seos_native_peripheral->credential,
                    apdu,
                    apdu_len,
+                   SEOS_SM_MAX_FRAME,
                    response,
                    seos_native_peripheral_sm_event,
                    seos_native_peripheral->seos)) {

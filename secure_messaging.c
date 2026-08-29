@@ -355,8 +355,48 @@ SecureMessaging* secure_messaging_alloc(AuthParameters* params) {
 
 void secure_messaging_free(SecureMessaging* secure_messaging) {
     furi_assert(secure_messaging);
-    // Nothing to free;
+    secure_messaging_clear_pending(secure_messaging);
     free(secure_messaging);
+}
+
+void secure_messaging_clear_pending(SecureMessaging* secure_messaging) {
+    free(secure_messaging->pending);
+    secure_messaging->pending = NULL;
+    secure_messaging->pending_len = 0;
+    secure_messaging->pending_offset = 0;
+}
+
+bool secure_messaging_set_pending(
+    SecureMessaging* secure_messaging,
+    const uint8_t* data,
+    size_t len) {
+    secure_messaging_clear_pending(secure_messaging);
+    if(len == 0) return true;
+
+    secure_messaging->pending = malloc(len);
+    if(!secure_messaging->pending) return false;
+
+    memcpy(secure_messaging->pending, data, len);
+    secure_messaging->pending_len = len;
+    return true;
+}
+
+size_t secure_messaging_take_pending(
+    SecureMessaging* secure_messaging,
+    uint8_t* out,
+    size_t max_len,
+    size_t* remaining) {
+    size_t left = secure_messaging->pending_len - secure_messaging->pending_offset;
+    size_t taken = left < max_len ? left : max_len;
+
+    memcpy(out, secure_messaging->pending + secure_messaging->pending_offset, taken);
+    secure_messaging->pending_offset += taken;
+
+    *remaining = secure_messaging->pending_len - secure_messaging->pending_offset;
+    if(*remaining == 0) {
+        secure_messaging_clear_pending(secure_messaging);
+    }
+    return taken;
 }
 
 void secure_messaging_increment_context(SecureMessaging* secure_messaging) {

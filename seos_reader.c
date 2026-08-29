@@ -58,37 +58,78 @@ bool seos_reader_request_sio(SeosReader* seos_reader) {
         tx_buffer);
 
     seos_log_bitbuffer(TAG, "NFC transmit", tx_buffer);
-    error = iso14443_4a_poller_send_block(iso14443_4a_poller, tx_buffer, rx_buffer);
-    if(error != Iso14443_4aErrorNone) {
-        FURI_LOG_W(TAG, "iso14443_4a_poller_send_block error %d", error);
-        return false;
-    }
-    bit_buffer_reset(tx_buffer);
 
-    seos_log_bitbuffer(TAG, "NFC response(wrapped)", rx_buffer);
-    if(!secure_messaging_unwrap_rapdu(secure_messaging, rx_buffer)) {
-        FURI_LOG_W(TAG, "Could not unwrap SIO response");
-        return false;
-    }
-    seos_log_bitbuffer(TAG, "NFC response(clear)", rx_buffer);
+    /* A response longer than one frame arrives in pieces, each ending in 61xx
+     * to say more is coming. They are collected before being unwrapped: the
+     * whole answer is one protected message, so a piece means nothing alone. */
+    BitBuffer* assembled = bit_buffer_alloc(SEOS_SM_RESPONSE_MAX);
+    bool ok = false;
 
-    // fileId(2) then the length byte
-    if(bit_buffer_get_size_bytes(rx_buffer) < 3) {
-        FURI_LOG_W(TAG, "SIO response too short");
-        return false;
-    }
-    seos_reader->credential->sio_len = bit_buffer_get_byte(rx_buffer, 2);
-    if(seos_reader->credential->sio_len > sizeof(seos_reader->credential->sio) ||
-       bit_buffer_get_size_bytes(rx_buffer) < 3 + seos_reader->credential->sio_len) {
-        FURI_LOG_W(TAG, "SIO length does not fit the response");
-        return false;
-    }
-    memcpy(
-        seos_reader->credential->sio,
-        bit_buffer_get_data(rx_buffer) + 3,
-        seos_reader->credential->sio_len);
+    for(size_t frame = 0; frame < SEOS_SM_MAX_CHAINED_FRAMES; frame++) {
+        error = iso14443_4a_poller_send_block(iso14443_4a_poller, tx_buffer, rx_buffer);
+        if(error != Iso14443_4aErrorNone) {
+            FURI_LOG_W(TAG, "iso14443_4a_poller_send_block error %d", error);
+            break;
+        }
+        bit_buffer_reset(tx_buffer);
+        seos_log_bitbuffer(TAG, "NFC response(wrapped)", rx_buffer);
 
-    return true;
+        size_t rx_len = bit_buffer_get_size_bytes(rx_buffer);
+        if(rx_len < 2) {
+            FURI_LOG_W(TAG, "Response too short to carry a status word");
+            break;
+        }
+
+        uint8_t sw1 = bit_buffer_get_byte(rx_buffer, rx_len - 2);
+        uint8_t sw2 = bit_buffer_get_byte(rx_buffer, rx_len - 1);
+        if(bit_buffer_get_size_bytes(assembled) + rx_len - 2 > SEOS_SM_RESPONSE_MAX) {
+            FURI_LOG_W(TAG, "Chained response too long to hold");
+            break;
+        }
+        bit_buffer_append_bytes(assembled, bit_buffer_get_data(rx_buffer), rx_len - 2);
+
+        if(sw1 == 0x61) {
+            bit_buffer_append_bytes(
+                tx_buffer, (uint8_t*)SEOS_GET_RESPONSE, sizeof(SEOS_GET_RESPONSE));
+            continue;
+        }
+        if(sw1 == 0x90 && sw2 == 0x00) {
+            ok = true;
+        } else {
+            FURI_LOG_W(TAG, "SIO request answered %02x%02x", sw1, sw2);
+        }
+        break;
+    }
+
+    if(ok) {
+        if(!secure_messaging_unwrap_rapdu(secure_messaging, assembled)) {
+            FURI_LOG_W(TAG, "Could not unwrap SIO response");
+            ok = false;
+        }
+    }
+
+    if(ok) {
+        seos_log_bitbuffer(TAG, "NFC response(clear)", assembled);
+
+        // fileId(2) then the length byte
+        size_t len = bit_buffer_get_size_bytes(assembled);
+        if(len < 3) {
+            FURI_LOG_W(TAG, "SIO response too short");
+            ok = false;
+        } else {
+            size_t sio_len = bit_buffer_get_byte(assembled, 2);
+            if(sio_len > sizeof(seos_reader->credential->sio) || len < 3 + sio_len) {
+                FURI_LOG_W(TAG, "SIO length does not fit the response");
+                ok = false;
+            } else {
+                seos_reader->credential->sio_len = sio_len;
+                memcpy(seos_reader->credential->sio, bit_buffer_get_data(assembled) + 3, sio_len);
+            }
+        }
+    }
+
+    bit_buffer_free(assembled);
+    return ok;
 }
 
 bool seos_reader_write_sio(SeosReader* seos_reader) {

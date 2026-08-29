@@ -13,6 +13,20 @@
 /* The command header a secure message carries. */
 extern const uint8_t SEOS_SM_HEADER[4];
 
+/* The command asking for the next piece of a chained response. */
+extern const uint8_t SEOS_GET_RESPONSE[4];
+
+/* Largest response the handler will assemble before splitting it. */
+#define SEOS_SM_RESPONSE_MAX 256
+
+/* Bytes a single frame carries, status word included. Every transport here
+ * works to the same budget; anything longer is chained. */
+#define SEOS_SM_MAX_FRAME 128
+
+/* Frames one chained response may take. A bound on a loop driven by the other
+ * end, so a card that never says it is finished cannot hold the reader. */
+#define SEOS_SM_MAX_CHAINED_FRAMES 8
+
 typedef enum {
     SeosSmEventSioRequested,
 } SeosSmEvent;
@@ -32,6 +46,16 @@ bool seos_sm_command_handle(
     SeosCredential* credential,
     const uint8_t* apdu,
     size_t apdu_len,
+    size_t max_frame_len,
     BitBuffer* tx,
     SeosSmEventCallback on_event,
     void* event_context);
+
+/* Hands out the next piece of a response that did not fit one frame.
+ *
+ * Answers 6a86 if nothing is pending, since the reader asked for a
+ * continuation that does not exist. */
+void seos_sm_command_get_response(
+    SecureMessaging* secure_messaging,
+    size_t max_frame_len,
+    BitBuffer* tx);
