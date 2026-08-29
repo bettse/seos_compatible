@@ -41,18 +41,6 @@ typedef struct {
 
 } SeosCredential;
 
-/* Whether the lengths a credential file states fit the fields that hold them.
- *
- * The file says how long each field is and that number decides how much is
- * read into a field of fixed size, so a file claiming more than fits has to be
- * refused rather than believed. */
-static inline bool
-    seos_credential_lengths_fit(size_t diversifier_len, size_t sio_len, size_t adf_oid_len) {
-    return diversifier_len <= sizeof(((SeosCredential*)0)->diversifier) &&
-           sio_len <= sizeof(((SeosCredential*)0)->sio) &&
-           adf_oid_len <= sizeof(((SeosCredential*)0)->adf_oid);
-}
-
 SeosCredential* seos_credential_alloc();
 void seos_credential_free(SeosCredential* seos_credential);
 

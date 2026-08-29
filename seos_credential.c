@@ -137,23 +137,30 @@ static bool
             break;
         }
 
+        /* Each field is read in the order the file lists it: a key is looked
+         * for from the current position onward, so reading one out of turn
+         * steps past the ones before it and they can no longer be found.
+         *
+         * The file states each length, and that decides how much is read into
+         * a field of fixed size, so each is checked before it is used. */
         uint32_t diversifier_len = 0;
-        uint32_t sio_len = 0;
         if(!flipper_format_read_uint32(file, "Diversifier Length", &diversifier_len, 1)) break;
-        if(!flipper_format_read_uint32(file, "SIO Length", &sio_len, 1)) break;
-
-        /* The file says how long these are, and that decides how much is read
-         * into fields of fixed size. Believe it only if it fits. */
-        if(!seos_credential_lengths_fit(diversifier_len, sio_len, 0)) {
-            FURI_LOG_W(TAG, "Credential claims lengths that do not fit");
+        if(diversifier_len > sizeof(seos_credential->diversifier)) {
+            FURI_LOG_W(TAG, "Diversifier of %lu will not fit", diversifier_len);
             break;
         }
         seos_credential->diversifier_len = diversifier_len;
-        seos_credential->sio_len = sio_len;
-
         if(!flipper_format_read_hex(
                file, "Diversifier", seos_credential->diversifier, seos_credential->diversifier_len))
             break;
+
+        uint32_t sio_len = 0;
+        if(!flipper_format_read_uint32(file, "SIO Length", &sio_len, 1)) break;
+        if(sio_len > sizeof(seos_credential->sio)) {
+            FURI_LOG_W(TAG, "Credential of %lu will not fit", sio_len);
+            break;
+        }
+        seos_credential->sio_len = sio_len;
         if(!flipper_format_read_hex(file, "SIO", seos_credential->sio, seos_credential->sio_len))
             break;
 
@@ -179,8 +186,8 @@ static bool
 
         uint32_t adf_oid_len = 0;
         if(flipper_format_read_uint32(file, "ADF OID Length", &adf_oid_len, 1)) {
-            if(!seos_credential_lengths_fit(0, 0, adf_oid_len)) {
-                FURI_LOG_W(TAG, "Credential claims an ADF OID that does not fit");
+            if(adf_oid_len > sizeof(seos_credential->adf_oid)) {
+                FURI_LOG_W(TAG, "Application identifier of %lu will not fit", adf_oid_len);
                 break;
             }
             seos_credential->adf_oid_len = adf_oid_len;
