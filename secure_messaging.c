@@ -1,5 +1,7 @@
 #include "secure_messaging.h"
 
+#include "seos_tlv.h"
+
 /* The hash calls were renamed between mbedTLS releases: 2.x deprecated the
  * plain names in favour of an _ret suffix, and 3.x dropped the suffix again.
  * Only 3.x carries the version macro into the hash headers, so its absence
@@ -30,24 +32,6 @@ static uint8_t padding[16] =
 #define DO_CHECKSUM   0x8e
 #define DO_LE         0x97
 #define DO_STATUS     0x99
-
-/* Longest cryptogram header: tag, long-form marker, length. */
-#define CRYPTOGRAM_HEADER_MAX 3
-
-/* Writes the cryptogram tag and length, returning the header length.
- *
- * A length of 128 or more needs the long form; written as a bare byte it would
- * be read back as a length header with no length octets. */
-static size_t encode_cryptogram_header(uint8_t* out, size_t value_len) {
-    out[0] = DO_CRYPTOGRAM;
-    if(value_len < 0x80) {
-        out[1] = (uint8_t)value_len;
-        return 2;
-    }
-    out[1] = 0x81;
-    out[2] = (uint8_t)value_len;
-    return 3;
-}
 
 /* Computes the checksum over the sequence counter, the command header if there
  * is one, and the protected data objects, each group padded to a block
@@ -102,31 +86,6 @@ static bool checksum_objects(
         cmac);
 }
 
-/* Reads a data object header at `offset`, reporting where its value starts and
- * how long it is. */
-static bool read_object_header(
-    const uint8_t* data,
-    size_t data_len,
-    size_t offset,
-    uint8_t* tag,
-    size_t* value_offset,
-    size_t* value_len) {
-    if(offset + 2 > data_len) return false;
-
-    *tag = data[offset];
-    uint8_t length_byte = data[offset + 1];
-    if(length_byte < 0x80) {
-        *value_len = length_byte;
-        *value_offset = offset + 2;
-    } else if(length_byte == 0x81 && offset + 3 <= data_len) {
-        *value_len = data[offset + 2];
-        *value_offset = offset + 3;
-    } else {
-        return false;
-    }
-    return *value_offset + *value_len <= data_len;
-}
-
 /* Walks the data objects from `body_offset` to the checksum object.
  *
  * The checksum covers everything ahead of it, so its position also gives the
@@ -137,21 +96,19 @@ static bool find_checksum(
     size_t body_offset,
     size_t* objects_len,
     size_t* checksum_offset) {
-    size_t offset = body_offset;
-    while(offset < data_len) {
-        uint8_t tag;
-        size_t value_offset;
-        size_t value_len;
-        if(!read_object_header(data, data_len, offset, &tag, &value_offset, &value_len)) {
-            return false;
-        }
-        if(tag == DO_CHECKSUM) {
-            if(value_len != SEOS_WORKER_CMAC_SIZE) return false;
-            *objects_len = offset - body_offset;
-            *checksum_offset = value_offset;
+    SeosTlvCursor cursor;
+    seos_tlv_cursor_init(&cursor, data, data_len);
+    cursor.offset = body_offset;
+
+    while(!seos_tlv_cursor_done(&cursor)) {
+        SeosTlvObject object;
+        if(!seos_tlv_read(&cursor, &object)) return false;
+        if(object.tag == DO_CHECKSUM) {
+            if(object.value_len != SEOS_WORKER_CMAC_SIZE) return false;
+            *objects_len = object.header_offset - body_offset;
+            *checksum_offset = object.value_offset;
             return true;
         }
-        offset = value_offset + value_len;
     }
     return false;
 }
@@ -229,14 +186,14 @@ static bool unwrap_cryptogram(
     uint8_t* clear,
     size_t clear_cap,
     size_t* clear_len_out) {
-    uint8_t tag;
-    size_t value_offset;
-    size_t value_len;
-    if(!read_object_header(data, data_len, offset, &tag, &value_offset, &value_len) ||
-       tag != DO_CRYPTOGRAM) {
+    SeosTlvObject cryptogram;
+    if(!seos_tlv_read_at(data, data_len, offset, &cryptogram) ||
+       cryptogram.tag != DO_CRYPTOGRAM) {
         FURI_LOG_W(TAG, "No cryptogram to unwrap");
         return false;
     }
+    size_t value_offset = cryptogram.value_offset;
+    size_t value_len = cryptogram.value_len;
 
     size_t block_size = seos_cipher_block_size(secure_messaging->cipher);
     if(value_len == 0 || value_len > clear_cap || (value_len % block_size) != 0) {
@@ -432,8 +389,9 @@ bool secure_messaging_wrap_apdu(
         return false;
     }
 
-    uint8_t cryptogram_header[CRYPTOGRAM_HEADER_MAX];
-    size_t cryptogram_header_len = encode_cryptogram_header(cryptogram_header, clear_len);
+    uint8_t cryptogram_header[SEOS_TLV_HEADER_MAX];
+    size_t cryptogram_header_len =
+        seos_tlv_write_header(cryptogram_header, DO_CRYPTOGRAM, clear_len);
 
     uint8_t protected_le[] = {DO_LE, 0x00};
     uint8_t checksum_prefix[] = {DO_CHECKSUM, SEOS_WORKER_CMAC_SIZE};
@@ -620,7 +578,7 @@ bool secure_messaging_wrap_rapdu(
             return false;
         }
 
-        objects_len = encode_cryptogram_header(objects, clear_len);
+        objects_len = seos_tlv_write_header(objects, DO_CRYPTOGRAM, clear_len);
         memcpy(objects + objects_len, encrypted, clear_len);
         objects_len += clear_len;
     } else {
