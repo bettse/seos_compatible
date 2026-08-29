@@ -22,19 +22,23 @@ HOST_TEST_SUPPORT := \
 	$(MUNIT)/munit.c \
 	$(HOST_TESTS)/bit_buffer_mock.c \
 	$(HOST_TESTS)/furi_hal_mock.c \
-	$(HOST_TESTS)/test_helpers.c
+	$(HOST_TESTS)/test_helpers.c \
+	$(HOST_TESTS)/keys_stub.c
 
 HOST_TEST_SOURCES := \
 	$(HOST_TESTS)/test_main.c \
 	$(HOST_TESTS)/test_cmac.c \
 	$(HOST_TESTS)/test_kdf.c \
-	$(HOST_TESTS)/test_secure_messaging.c
+	$(HOST_TESTS)/test_secure_messaging.c \
+	$(HOST_TESTS)/test_protocol.c
 
 HOST_TEST_APP_SOURCES := \
 	aes_cmac.c \
 	des_cmac.c \
 	seos_common.c \
-	secure_messaging.c
+	secure_messaging.c \
+	seos_protocol.c \
+	memmem.c
 
 .PHONY: test-host clean-host
 

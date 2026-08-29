@@ -1,6 +1,8 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 #include "seos.h"
 
 #define SEOS_DEFAULT_KEYS_FILENAME "keys"

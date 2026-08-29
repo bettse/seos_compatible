@@ -38,6 +38,9 @@
 #define FURI_LOG_W(tag, ...) ((void)(tag))
 #define FURI_LOG_E(tag, ...) ((void)(tag))
 
+/* Only the type is needed: the protocol code never builds a string. */
+typedef struct FuriString FuriString;
+
 #define furi_assert(expr) assert(expr)
 #define furi_check(expr)  assert(expr)
 #define furi_crash(msg)   abort()

@@ -34,6 +34,7 @@
 #include "seos_common.h"
 #include "seos_reader.h"
 #include "seos_emulator.h"
+#include "seos_protocol.h"
 #include "scenes/seos_scene.h"
 #include "des_cmac.h"
 #include "aes_cmac.h"

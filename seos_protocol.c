@@ -1,0 +1,512 @@
+#include "seos_protocol.h"
+
+#include "keys.h"
+#include "aes_cmac.h"
+#include "des_cmac.h"
+
+#define TAG "SeosProtocol"
+
+const uint8_t SEOS_SW_SUCCESS[2] = {0x90, 0x00};
+const uint8_t SEOS_SW_FILE_NOT_FOUND[2] = {0x6A, 0x82};
+
+static uint8_t general_authenticate_1_response_header[] = {0x7c, 0x0a, 0x81, 0x08};
+
+/* CLA, INS, P1 and the key number of the second authenticate command. */
+#define GENERAL_AUTHENTICATE_2_HEADER_LEN 4
+
+void seos_emulator_select_aid(BitBuffer* tx_buffer, const uint8_t* aid, size_t aid_len) {
+    FURI_LOG_D(TAG, "Select AID");
+    bit_buffer_append_byte(tx_buffer, 0x6F); // FCI Template
+    bit_buffer_append_byte(tx_buffer, 2 + aid_len); // length
+    bit_buffer_append_byte(tx_buffer, 0x84); // DF Name
+    bit_buffer_append_byte(tx_buffer, aid_len); // length
+    bit_buffer_append_bytes(tx_buffer, aid, aid_len);
+}
+
+void seos_emulator_general_authenticate_1(BitBuffer* tx_buffer, AuthParameters params) {
+    bit_buffer_append_bytes(
+        tx_buffer,
+        general_authenticate_1_response_header,
+        sizeof(general_authenticate_1_response_header));
+    bit_buffer_append_bytes(tx_buffer, params.rndICC, sizeof(params.rndICC));
+}
+
+// 0a00
+// 00870001 2c7c 2a82 28 bbb4e9156136f27f687e2967865dfe812e33c95ddcf9294a4340d26da3e76db0220d1163c591e5b8 00
+bool seos_emulator_general_authenticate_2(
+    const uint8_t* buffer,
+    size_t buffer_len,
+    SeosCredential* credential,
+    AuthParameters* params,
+    BitBuffer* tx_buffer) {
+    FURI_LOG_D(TAG, "seos_emulator_general_authenticate_2");
+
+    /* Header, the tag and length bytes ahead of the cryptogram, then the
+     * cryptogram and its checksum. */
+    const size_t cryptogram_offset = GENERAL_AUTHENTICATE_2_HEADER_LEN + 5;
+    const size_t encrypted_len = 32;
+    if(buffer_len < cryptogram_offset + encrypted_len + SEOS_WORKER_CMAC_SIZE) {
+        FURI_LOG_W(TAG, "Authenticate frame too short (%d)", buffer_len);
+        return false;
+    }
+
+    uint8_t* rx_data = (uint8_t*)buffer;
+    uint8_t* cryptogram = rx_data + cryptogram_offset;
+    uint8_t* mac = cryptogram + encrypted_len;
+
+    params->key_no = rx_data[3];
+
+    uint8_t* master_key = SEOS_ADF1_READ;
+    if(params->key_no == 0x02) {
+        // Write keyslot
+        master_key = SEOS_ADF1_WRITE;
+    }
+
+    if(credential->use_hardcoded) {
+        memcpy(params->priv_key, credential->priv_key, sizeof(params->priv_key));
+        memcpy(params->auth_key, credential->auth_key, sizeof(params->auth_key));
+    } else {
+        seos_worker_diversify_key(
+            master_key,
+            credential->diversifier,
+            credential->diversifier_len,
+            SEOS_ADF_OID,
+            SEOS_ADF_OID_LEN,
+            params->cipher,
+            params->hash,
+            params->key_no,
+            true,
+            params->priv_key);
+        seos_worker_diversify_key(
+            master_key,
+            credential->diversifier,
+            credential->diversifier_len,
+            SEOS_ADF_OID,
+            SEOS_ADF_OID_LEN,
+            params->cipher,
+            params->hash,
+            params->key_no,
+            false,
+            params->auth_key);
+    }
+
+    uint8_t cmac[16];
+    if(params->cipher == AES_128_CBC) {
+        aes_cmac(params->auth_key, sizeof(params->auth_key), cryptogram, encrypted_len, cmac);
+    } else if(params->cipher == TWO_KEY_3DES_CBC_MODE) {
+        des_cmac(params->auth_key, sizeof(params->auth_key), cryptogram, encrypted_len, cmac);
+    } else {
+        FURI_LOG_W(TAG, "Cipher not matched");
+        return false;
+    }
+
+    if(memcmp(cmac, mac, SEOS_WORKER_CMAC_SIZE) != 0) {
+        FURI_LOG_W(TAG, "Incorrect cryptogram mac %02x... vs %02x...", cmac[0], mac[0]);
+        return false;
+    }
+
+    uint8_t clear[32];
+    if(params->cipher == AES_128_CBC) {
+        seos_worker_aes_decrypt(params->priv_key, encrypted_len, cryptogram, clear);
+    } else if(params->cipher == TWO_KEY_3DES_CBC_MODE) {
+        seos_worker_des_decrypt(params->priv_key, encrypted_len, cryptogram, clear);
+    } else {
+        FURI_LOG_W(TAG, "Cipher not matched");
+    }
+
+    size_t index = 0;
+    memcpy(params->UID, clear + index, sizeof(params->UID));
+    index += sizeof(params->UID);
+    if(memcmp(clear + index, params->rndICC, sizeof(params->rndICC)) != 0) {
+        FURI_LOG_W(TAG, "Incorrect rndICC returned");
+        return false;
+    }
+    index += sizeof(params->rndICC);
+    memcpy(params->cNonce, clear + index, sizeof(params->cNonce));
+    index += sizeof(params->cNonce);
+
+    // Construct response
+    uint8_t response_header[] = {0x7c, 0x2a, 0x82, 0x28};
+    memset(clear, 0, sizeof(clear));
+    memset(cmac, 0, sizeof(cmac));
+    index = 0;
+    memcpy(clear + index, params->rndICC, sizeof(params->rndICC));
+    index += sizeof(params->rndICC);
+    memcpy(clear + index, params->UID, sizeof(params->UID));
+    index += sizeof(params->UID);
+    memcpy(clear + index, params->rNonce, sizeof(params->rNonce));
+    index += sizeof(params->rNonce);
+
+    uint8_t encrypted[32];
+    if(params->cipher == AES_128_CBC) {
+        seos_worker_aes_encrypt(params->priv_key, sizeof(clear), clear, encrypted);
+        aes_cmac(params->auth_key, sizeof(params->auth_key), encrypted, sizeof(encrypted), cmac);
+    } else if(params->cipher == TWO_KEY_3DES_CBC_MODE) {
+        seos_worker_des_encrypt(params->priv_key, sizeof(clear), clear, encrypted);
+        des_cmac(params->auth_key, sizeof(params->auth_key), encrypted, sizeof(encrypted), cmac);
+    } else {
+        FURI_LOG_W(TAG, "Cipher not matched");
+    }
+
+    bit_buffer_append_bytes(tx_buffer, response_header, sizeof(response_header));
+    bit_buffer_append_bytes(tx_buffer, encrypted, sizeof(encrypted));
+    bit_buffer_append_bytes(tx_buffer, cmac, SEOS_WORKER_CMAC_SIZE);
+
+    return true;
+}
+
+void seos_emulator_des_adf_payload(SeosCredential* credential, uint8_t* buffer) {
+    // Synethic IV
+    /// random bytes
+    uint8_t rnd[4] = {0, 0, 0, 0};
+    uint8_t cmac[8] = {0};
+    /// cmac
+    des_cmac(SEOS_ADF1_PRIV_MAC, sizeof(SEOS_ADF1_PRIV_MAC), rnd, sizeof(rnd), cmac);
+    uint8_t iv[8];
+    memcpy(iv + 0, rnd, sizeof(rnd));
+    memcpy(iv + sizeof(rnd), cmac, sizeof(iv) - sizeof(rnd));
+
+    // Copy IV to buffer because mbedtls_des3_crypt_cbc mutates it
+    memcpy(buffer + 0, iv, sizeof(iv));
+
+    uint8_t clear[0x30];
+    memset(clear, 0, sizeof(clear));
+    size_t index = 0;
+
+    // OID
+    clear[index++] = 0x06;
+    clear[index++] = SEOS_ADF_OID_LEN, memcpy(clear + index, SEOS_ADF_OID, SEOS_ADF_OID_LEN);
+    index += SEOS_ADF_OID_LEN;
+    // diversifier
+    clear[index++] = 0xcf;
+    clear[index++] = credential->diversifier_len;
+    memcpy(clear + index, credential->diversifier, credential->diversifier_len);
+    index += credential->diversifier_len;
+
+    mbedtls_des3_context ctx;
+    mbedtls_des3_init(&ctx);
+    mbedtls_des3_set2key_enc(&ctx, SEOS_ADF1_PRIV_ENC);
+    mbedtls_des3_crypt_cbc(
+        &ctx, MBEDTLS_DES_ENCRYPT, sizeof(clear), iv, clear, buffer + sizeof(iv));
+    mbedtls_des3_free(&ctx);
+}
+
+void seos_emulator_aes_adf_payload(SeosCredential* credential, uint8_t* buffer) {
+    // Synethic IV
+    /// random bytes
+    uint8_t rnd[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+    uint8_t cmac[16] = {0};
+    /// cmac
+    aes_cmac(SEOS_ADF1_PRIV_MAC, sizeof(SEOS_ADF1_PRIV_MAC), rnd, sizeof(rnd), cmac);
+    uint8_t iv[16];
+    memcpy(iv + 0, rnd, sizeof(rnd));
+    memcpy(iv + sizeof(rnd), cmac, sizeof(iv) - sizeof(rnd));
+
+    // Copy IV to buffer because mbedtls_aes_crypt_cbc mutates it
+    memcpy(buffer + 0, iv, sizeof(iv));
+
+    uint8_t clear[0x30];
+    memset(clear, 0, sizeof(clear));
+    size_t index = 0;
+
+    // OID
+    clear[index++] = 0x06;
+    clear[index++] = SEOS_ADF_OID_LEN;
+    memcpy(clear + index, SEOS_ADF_OID, SEOS_ADF_OID_LEN);
+    index += SEOS_ADF_OID_LEN;
+    // diversifier
+    clear[index++] = 0xcf;
+    clear[index++] = credential->diversifier_len;
+    memcpy(clear + index, credential->diversifier, credential->diversifier_len);
+    index += credential->diversifier_len;
+
+    mbedtls_aes_context ctx;
+    mbedtls_aes_init(&ctx);
+    mbedtls_aes_setkey_enc(&ctx, SEOS_ADF1_PRIV_ENC, sizeof(SEOS_ADF1_PRIV_ENC) * 8);
+    mbedtls_aes_crypt_cbc(
+        &ctx, MBEDTLS_AES_ENCRYPT, sizeof(clear), iv, clear, buffer + sizeof(iv));
+    mbedtls_aes_free(&ctx);
+}
+
+bool seos_emulator_select_adf(
+    const uint8_t* oid_list,
+    size_t oid_list_len,
+    AuthParameters* params,
+    SeosCredential* credential,
+    BitBuffer* tx_buffer) {
+    FURI_LOG_D(TAG, "Select ADF");
+
+    void* p = NULL;
+    if(credential->adf_oid_len > 0) {
+        p = memmem(oid_list, oid_list_len, credential->adf_oid, credential->adf_oid_len);
+        if(p) {
+            seos_log_buffer(TAG, "Select ADF OID(credential)", p, credential->adf_oid_len);
+
+            if(credential->adf_response[0] == 0xCD) {
+                FURI_LOG_I(TAG, "Using hardcoded ADF Response");
+                // 4 byte cipher/hash
+                // 2 byte cryptogram header
+                // x bytes of cryptogram
+                // 10 bytes for mac (2 byte header + 8 byte cmac)
+                size_t adf_response_len = 4 + 2 + credential->adf_response[5] + 10;
+                bit_buffer_append_bytes(tx_buffer, credential->adf_response, adf_response_len);
+
+                params->cipher = credential->adf_response[2];
+                params->hash = credential->adf_response[3];
+                credential->use_hardcoded = true;
+                return true;
+            }
+        }
+    }
+    // Next we try to match the ADF OID from the keys file
+    p = memmem(oid_list, oid_list_len, SEOS_ADF_OID, SEOS_ADF_OID_LEN);
+    if(p) {
+        seos_log_buffer(TAG, "Select ADF OID(keys)", p, SEOS_ADF_OID_LEN);
+    } else {
+        return false;
+    }
+
+    size_t prefix_len = bit_buffer_get_size_bytes(tx_buffer);
+    size_t des_cryptogram_length = 56;
+    size_t aes_cryptogram_length = 64;
+    uint8_t header[] = {0xcd, 0x02, params->cipher, params->hash};
+    bit_buffer_append_bytes(tx_buffer, header, sizeof(header));
+
+    // cryptogram
+    // 06112b0601040181e438010102011801010202 cf 07 3d4c010c71cfa7 e2d0b41a00cc5e494c8d52b6e562592399fe614a
+    uint8_t buffer[64];
+    uint8_t cmac[16];
+    memset(buffer, 0, sizeof(buffer));
+    if(params->cipher == AES_128_CBC) {
+        uint8_t cryptogram_prefix[] = {0x85, aes_cryptogram_length};
+        bit_buffer_append_bytes(tx_buffer, cryptogram_prefix, sizeof(cryptogram_prefix));
+
+        seos_emulator_aes_adf_payload(credential, buffer);
+        bit_buffer_append_bytes(tx_buffer, buffer, aes_cryptogram_length);
+
+        aes_cmac(
+            SEOS_ADF1_PRIV_MAC,
+            sizeof(SEOS_ADF1_PRIV_MAC),
+            (uint8_t*)bit_buffer_get_data(tx_buffer) + prefix_len,
+            bit_buffer_get_size_bytes(tx_buffer) - prefix_len,
+            cmac);
+    } else if(params->cipher == TWO_KEY_3DES_CBC_MODE) {
+        uint8_t cryptogram_prefix[] = {0x85, des_cryptogram_length};
+        bit_buffer_append_bytes(tx_buffer, cryptogram_prefix, sizeof(cryptogram_prefix));
+
+        seos_emulator_des_adf_payload(credential, buffer);
+        bit_buffer_append_bytes(tx_buffer, buffer, des_cryptogram_length);
+
+        des_cmac(
+            SEOS_ADF1_PRIV_MAC,
+            sizeof(SEOS_ADF1_PRIV_MAC),
+            (uint8_t*)bit_buffer_get_data(tx_buffer) + prefix_len,
+            bit_buffer_get_size_bytes(tx_buffer) - prefix_len,
+            cmac);
+    }
+
+    uint8_t cmac_prefix[] = {0x8e, 0x08};
+    bit_buffer_append_bytes(tx_buffer, cmac_prefix, sizeof(cmac_prefix));
+    bit_buffer_append_bytes(tx_buffer, cmac, SEOS_WORKER_CMAC_SIZE);
+    return true;
+}
+
+void seos_reader_generate_cryptogram(
+    SeosCredential* credential,
+    AuthParameters* params,
+    uint8_t* cryptogram) {
+    uint8_t* master_key = SEOS_ADF1_READ;
+    if(params->key_no == 0x02) {
+        // Write keyslot
+        master_key = SEOS_ADF1_WRITE;
+    }
+
+    seos_worker_diversify_key(
+        master_key,
+        credential->diversifier,
+        credential->diversifier_len,
+        SEOS_ADF_OID,
+        SEOS_ADF_OID_LEN,
+        params->cipher,
+        params->hash,
+        params->key_no,
+        true,
+        params->priv_key);
+    seos_worker_diversify_key(
+        master_key,
+        credential->diversifier,
+        credential->diversifier_len,
+        SEOS_ADF_OID,
+        SEOS_ADF_OID_LEN,
+        params->cipher,
+        params->hash,
+        params->key_no,
+        false,
+        params->auth_key);
+
+    uint8_t clear[32];
+    memset(clear, 0, sizeof(clear));
+    size_t index = 0;
+    memcpy(clear + index, params->UID, sizeof(params->UID));
+    index += sizeof(params->UID);
+    memcpy(clear + index, params->rndICC, sizeof(params->rndICC));
+    index += sizeof(params->rndICC);
+    memcpy(clear + index, params->cNonce, sizeof(params->cNonce));
+    index += sizeof(params->cNonce);
+
+    uint8_t cmac[16];
+    if(params->cipher == AES_128_CBC) {
+        seos_worker_aes_encrypt(params->priv_key, sizeof(clear), clear, cryptogram);
+
+        aes_cmac(params->auth_key, sizeof(params->auth_key), cryptogram, index, cmac);
+    } else if(params->cipher == TWO_KEY_3DES_CBC_MODE) {
+        seos_worker_des_encrypt(params->priv_key, sizeof(clear), clear, cryptogram);
+
+        des_cmac(params->auth_key, sizeof(params->auth_key), cryptogram, index, cmac);
+    } else {
+        FURI_LOG_W(TAG, "Cipher not matched");
+    }
+    memcpy(cryptogram + sizeof(clear), cmac, SEOS_WORKER_CMAC_SIZE);
+}
+
+bool seos_reader_verify_cryptogram(AuthParameters* params, const uint8_t* cryptogram) {
+    // cryptogram is 40 bytes: 32 byte encrypted + 8 byte cmac
+    size_t encrypted_len = 32;
+    uint8_t* mac = (uint8_t*)cryptogram + encrypted_len;
+    uint8_t cmac[16];
+    if(params->cipher == AES_128_CBC) {
+        aes_cmac(
+            params->auth_key, sizeof(params->auth_key), (uint8_t*)cryptogram, encrypted_len, cmac);
+    } else if(params->cipher == TWO_KEY_3DES_CBC_MODE) {
+        des_cmac(
+            params->auth_key, sizeof(params->auth_key), (uint8_t*)cryptogram, encrypted_len, cmac);
+    } else {
+        FURI_LOG_W(TAG, "Cipher not matched");
+    }
+
+    if(memcmp(cmac, mac, SEOS_WORKER_CMAC_SIZE) != 0) {
+        FURI_LOG_W(TAG, "Incorrect cryptogram mac %02x... vs %02x...", cmac[0], mac[0]);
+        return false;
+    }
+
+    uint8_t clear[32];
+    memset(clear, 0, sizeof(clear));
+    if(params->cipher == AES_128_CBC) {
+        seos_worker_aes_decrypt(params->priv_key, encrypted_len, cryptogram, clear);
+    } else if(params->cipher == TWO_KEY_3DES_CBC_MODE) {
+        seos_worker_des_decrypt(params->priv_key, encrypted_len, cryptogram, clear);
+    } else {
+        FURI_LOG_W(TAG, "Cipher not matched");
+    }
+
+    // rndICC[8], UID[8], rNonce[16]
+    uint8_t* rndICC = clear;
+    if(memcmp(rndICC, params->rndICC, sizeof(params->rndICC)) != 0) {
+        FURI_LOG_W(TAG, "Incorrect rndICC returned");
+        return false;
+    }
+    uint8_t* UID = clear + 8;
+    if(memcmp(UID, params->UID, sizeof(params->UID)) != 0) {
+        FURI_LOG_W(TAG, "Incorrect UID returned");
+        return false;
+    }
+
+    memcpy(params->rNonce, clear + 8 + 8, sizeof(params->rNonce));
+    return true;
+}
+bool seos_reader_select_adf_response(
+    BitBuffer* rx_buffer,
+    size_t offset,
+    SeosCredential* credential,
+    AuthParameters* params) {
+    seos_log_bitbuffer(TAG, "response", rx_buffer);
+
+    // cd 02 0206
+    // 85 38 41c01a89db89aecf 4b35b4f18dc4045b2a3d65cdd1c1944e8c8548f786e6c51128a5c8546a27120a7e44ba0f4cd7218a026ea1a73a9211a9
+    // 8e 08 20f830009042cb85
+
+    uint8_t expected_header[] = {0xcd, 0x02};
+    if(bit_buffer_get_size_bytes(rx_buffer) < sizeof(expected_header)) {
+        FURI_LOG_W(TAG, "Invalid response length");
+        return false;
+    }
+    // handle when the buffer starts with other stuff
+    const uint8_t* rx_data = bit_buffer_get_data(rx_buffer) + offset;
+    if(memcmp(rx_data, expected_header, sizeof(expected_header)) != 0) {
+        FURI_LOG_W(TAG, "Invalid response");
+        return false;
+    }
+    params->cipher = rx_data[2];
+    params->hash = rx_data[3];
+
+    memset(credential->adf_response, 0, sizeof(credential->adf_response));
+    size_t response_length =
+        bit_buffer_get_size_bytes(rx_buffer) - offset - sizeof(SEOS_SW_SUCCESS);
+    if(response_length > sizeof(credential->adf_response)) {
+        FURI_LOG_W(
+            TAG,
+            "adf_response too large %zu > %zu",
+            response_length,
+            sizeof(credential->adf_response));
+        response_length = sizeof(credential->adf_response);
+    }
+    memcpy(credential->adf_response, rx_data, response_length);
+
+    size_t bufLen = 0;
+    uint8_t clear[0x40];
+    memset(clear, 0, sizeof(clear));
+
+    // Copy IV because mbedtls methods mutate it
+    if(params->cipher == AES_128_CBC) {
+        uint8_t iv[16];
+        memcpy(iv, rx_data + 6, sizeof(iv));
+        bufLen = rx_data[5] - sizeof(iv);
+        uint8_t* enc = (uint8_t*)rx_data + 6 + sizeof(iv);
+
+        mbedtls_aes_context ctx;
+        mbedtls_aes_init(&ctx);
+        mbedtls_aes_setkey_dec(&ctx, SEOS_ADF1_PRIV_ENC, sizeof(SEOS_ADF1_PRIV_ENC) * 8);
+        mbedtls_aes_crypt_cbc(&ctx, MBEDTLS_AES_DECRYPT, bufLen, iv, enc, clear);
+        mbedtls_aes_free(&ctx);
+    } else if(params->cipher == TWO_KEY_3DES_CBC_MODE) {
+        uint8_t iv[8];
+        memcpy(iv, rx_data + 6, sizeof(iv));
+        bufLen = rx_data[5] - sizeof(iv);
+        uint8_t* enc = (uint8_t*)rx_data + 6 + sizeof(iv);
+
+        mbedtls_des3_context ctx;
+        mbedtls_des3_init(&ctx);
+        mbedtls_des3_set2key_dec(&ctx, SEOS_ADF1_PRIV_ENC);
+        mbedtls_des3_crypt_cbc(&ctx, MBEDTLS_DES_DECRYPT, bufLen, iv, enc, clear);
+        mbedtls_des3_free(&ctx);
+    }
+    seos_log_buffer(TAG, "clear", clear, sizeof(clear));
+
+    // 06112b0601040181e438010102011801010202 cf 07 3d4c010c71cfa7 e2d0b41a00cc5e494c8d52b6e562592399fe614a
+    if(clear[0] != 0x06) {
+        FURI_LOG_W(TAG, "Missing expected 0x06 at start of clear");
+        return false;
+    }
+    size_t oidLen = clear[1];
+    if(clear[2 + oidLen] != 0xCF) {
+        FURI_LOG_W(TAG, "Missing expected 0xCF after OID");
+        return false;
+    }
+    credential->diversifier_len = clear[2 + oidLen + 1];
+    if(credential->diversifier_len > sizeof(credential->diversifier)) {
+        FURI_LOG_W(TAG, "diversifier too large");
+        return false;
+    }
+
+    uint8_t* diversifier = clear + 2 + oidLen + 2;
+    memcpy(credential->diversifier, diversifier, credential->diversifier_len);
+
+    char display[SEOS_WORKER_MAX_BUFFER_SIZE * 2 + 1];
+    memset(display, 0, sizeof(display));
+    for(uint8_t i = 0; i < credential->diversifier_len; i++) {
+        snprintf(display + (i * 2), sizeof(display), "%02x", diversifier[i]);
+    }
+    FURI_LOG_D(TAG, "diversifier: %s", display);
+
+    return true;
+}
