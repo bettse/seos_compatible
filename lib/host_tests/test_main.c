@@ -8,6 +8,7 @@ extern MunitSuite test_secure_messaging_suite;
 extern MunitSuite test_protocol_suite;
 extern MunitSuite test_reader_parse_suite;
 extern MunitSuite test_sm_command_suite;
+extern MunitSuite test_write_response_suite;
 extern MunitSuite test_ble_policy_suite;
 extern MunitSuite test_ble_framing_suite;
 extern MunitSuite test_session_vectors_suite;
@@ -36,6 +37,11 @@ int main(int argc, char* argv[]) {
          1,
          MUNIT_SUITE_OPTION_NONE},
         {(char*)"/sm-command", test_sm_command_suite.tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
+        {(char*)"/write-response",
+         test_write_response_suite.tests,
+         NULL,
+         1,
+         MUNIT_SUITE_OPTION_NONE},
         {(char*)"/ble-policy", test_ble_policy_suite.tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
         {(char*)"/ble-framing", test_ble_framing_suite.tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
         {(char*)"/session-vectors",

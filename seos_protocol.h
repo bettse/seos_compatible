@@ -96,6 +96,18 @@ bool seos_parse_ga2_response(
     const uint8_t** cryptogram,
     size_t* cryptogram_len);
 
+/* The credential a card holds, named by its file identifier. */
+#define SEOS_SIO_FILE_TAG 0xff00
+
+/* Whether a card's answer says it stored what a write sent it.
+ *
+ * The answer is protected, so the status word in the clear settles nothing on
+ * its own. This verifies the checksum over the protected status, and steps the
+ * session counter for the response, which the next command depends on.
+ *
+ * `rx_buffer` is left holding whatever plaintext the answer carried. */
+bool seos_reader_write_accepted(SecureMessaging* secure_messaging, BitBuffer* rx_buffer);
+
 /* The credential, from an unwrapped read answer. */
 bool seos_parse_sio_response(
     const uint8_t* data,

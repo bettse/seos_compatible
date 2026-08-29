@@ -2,6 +2,7 @@
 
 #include "seos_protocol.h"
 #include "seos_sm_command.h"
+#include "seos_tlv.h"
 
 #define TAG "SeosReader"
 
@@ -160,18 +161,9 @@ bool seos_reader_write_sio(SeosReader* seos_reader) {
     BitBuffer* rx_buffer = seos_reader->rx_buffer;
     Iso14443_4aError error;
 
-    /* Tag, length, value. A length of 128 or more takes the long form. */
     size_t sio_len = seos_reader->credential->sio_len;
-    uint8_t message[4 + sizeof(seos_reader->credential->sio)];
-    size_t message_len = 0;
-    message[message_len++] = 0xff;
-    message[message_len++] = 0x00;
-    if(sio_len < 0x80) {
-        message[message_len++] = (uint8_t)sio_len;
-    } else {
-        message[message_len++] = 0x81;
-        message[message_len++] = (uint8_t)sio_len;
-    }
+    uint8_t message[SEOS_TLV_HEADER_MAX + sizeof(seos_reader->credential->sio)];
+    size_t message_len = seos_tlv_write_header(message, SEOS_SIO_FILE_TAG, sio_len);
     memcpy(message + message_len, seos_reader->credential->sio, sio_len);
     message_len += sio_len;
 
@@ -193,11 +185,12 @@ bool seos_reader_write_sio(SeosReader* seos_reader) {
     bit_buffer_reset(tx_buffer);
 
     seos_log_bitbuffer(TAG, "NFC response", rx_buffer);
-    uint16_t status_word = 0;
-    if(!seos_response_status(
-           bit_buffer_get_data(rx_buffer), bit_buffer_get_size_bytes(rx_buffer), &status_word) ||
-       status_word != SEOS_SW_SUCCESS_VALUE) {
-        FURI_LOG_W(TAG, "Non-success response");
+
+    /* The answer is protected. A status word in the clear proves nothing --
+     * anything in the field can send one -- so the checksum over the
+     * protected status is what decides it. Reading it also steps the counter
+     * for the response, which the next command depends on. */
+    if(!seos_reader_write_accepted(seos_reader->secure_messaging, rx_buffer)) {
         return false;
     }
 

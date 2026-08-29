@@ -521,9 +521,6 @@ bool seos_reader_verify_cryptogram(AuthParameters* params, const uint8_t* crypto
 #define DO_CARD_CHALLENGE 0x81
 #define DO_CARD_RESPONSE  0x82
 
-/* The credential the card holds, named by its file identifier. */
-#define SIO_FILE_TAG 0xff00
-
 /* Objects the answer to a select carries, and the two inside its cryptogram. */
 #define DO_ADF_ALGORITHMS  0xcd
 #define DO_ADF_CRYPTOGRAM  0x85
@@ -588,11 +585,25 @@ bool seos_parse_sio_response(
     size_t sio_cap,
     size_t* sio_len) {
     SeosTlvObject object;
-    if(!seos_tlv_read_at(data, len, 0, &object) || object.tag != SIO_FILE_TAG) return false;
+    if(!seos_tlv_read_at(data, len, 0, &object) || object.tag != SEOS_SIO_FILE_TAG) return false;
     if(object.value_len > sio_cap) return false;
 
     memcpy(sio, object.value, object.value_len);
     *sio_len = object.value_len;
+    return true;
+}
+
+bool seos_reader_write_accepted(SecureMessaging* secure_messaging, BitBuffer* rx_buffer) {
+    if(!secure_messaging_unwrap_rapdu(secure_messaging, rx_buffer)) {
+        FURI_LOG_W(TAG, "Could not unwrap the write answer");
+        return false;
+    }
+
+    if(secure_messaging->last_response_sw != SEOS_SW_SUCCESS_VALUE) {
+        FURI_LOG_W(TAG, "Write answered %04x", secure_messaging->last_response_sw);
+        return false;
+    }
+
     return true;
 }
 
