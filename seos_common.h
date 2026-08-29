@@ -10,8 +10,7 @@
 #include <mbedtls/des.h>
 #include <mbedtls/aes.h>
 
-#include "aes_cmac.h"
-#include "des_cmac.h"
+#include "cmac.h"
 
 #ifdef __cplusplus
 extern "C" {

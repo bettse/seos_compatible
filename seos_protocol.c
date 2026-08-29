@@ -1,8 +1,7 @@
 #include "seos_protocol.h"
 
 #include "keys.h"
-#include "aes_cmac.h"
-#include "des_cmac.h"
+#include "cmac.h"
 
 #define TAG "SeosProtocol"
 

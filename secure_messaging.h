@@ -9,8 +9,7 @@
 #include <mbedtls/sha256.h>
 
 #include "seos_common.h"
-#include "aes_cmac.h"
-#include "des_cmac.h"
+#include "cmac.h"
 
 #ifdef __cplusplus
 extern "C" {

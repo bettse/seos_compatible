@@ -7,8 +7,7 @@
 #include "munit.h"
 #include "test_helpers.h"
 
-#include <aes_cmac.h>
-#include <des_cmac.h>
+#include <cmac.h>
 
 /* Cases take a prefix of this. */
 static const char* sample_message = "05162738495a6b7c8d9eafc0d1e2f304"

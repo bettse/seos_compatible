@@ -35,8 +35,7 @@ HOST_TEST_SOURCES := \
 	$(HOST_TESTS)/test_ble_policy.c
 
 HOST_TEST_APP_SOURCES := \
-	aes_cmac.c \
-	des_cmac.c \
+	cmac.c \
 	seos_common.c \
 	secure_messaging.c \
 	seos_protocol.c \

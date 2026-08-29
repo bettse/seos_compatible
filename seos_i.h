@@ -30,8 +30,7 @@
 #include "seos_ble_plugin.h"
 #include "seos_protocol.h"
 #include "scenes/seos_scene.h"
-#include "des_cmac.h"
-#include "aes_cmac.h"
+#include "cmac.h"
 
 #define SEOS_TEXT_STORE_SIZE 128
 
