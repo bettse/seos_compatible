@@ -2,6 +2,7 @@
 
 #include "seos_protocol.h"
 #include "seos_sm_command.h"
+#include "seos_sm_event_ui.h"
 
 #define TAG "SeosEmulator"
 
@@ -51,15 +52,6 @@ void seos_emulator_free(SeosEmulator* seos_emulator) {
 
     bit_buffer_free(seos_emulator->tx_buffer);
     free(seos_emulator);
-}
-
-static void seos_emulator_sm_event(void* context, SeosSmEvent event) {
-    Seos* seos = context;
-    if(event == SeosSmEventSioRequested) {
-        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventSIORequested);
-    } else if(event == SeosSmEventSioWritten) {
-        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventPollerSuccess);
-    }
 }
 
 NfcCommand seos_worker_listener_inspect_reader(Seos* seos) {
@@ -228,7 +220,7 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
                    rx_len - offset,
                    SEOS_SM_MAX_FRAME,
                    tx_buffer,
-                   seos_emulator_sm_event,
+                   seos_sm_event_to_view_dispatcher,
                    seos)) {
                 secure_messaging_free(seos_emulator->secure_messaging);
                 seos_emulator->secure_messaging = NULL;

@@ -1,6 +1,7 @@
 #include "seos_central_i.h"
 
 #include "seos_sm_command.h"
+#include "../seos_sm_event_ui.h"
 #include "seos_common.h"
 
 #define TAG "SeosCentral"
@@ -52,15 +53,6 @@ void seos_central_start(SeosCentral* seos_central, FlowMode mode) {
 
 void seos_central_stop(SeosCentral* seos_central) {
     seos_att_stop(seos_central->seos_att);
-}
-
-static void seos_central_sm_event(void* context, SeosSmEvent event) {
-    Seos* seos = context;
-    if(event == SeosSmEventSioRequested) {
-        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventSIORequested);
-    } else if(event == SeosSmEventSioWritten) {
-        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventPollerSuccess);
-    }
 }
 
 void seos_central_notify(void* context, const uint8_t* buffer, size_t buffer_len) {
@@ -152,7 +144,7 @@ void seos_central_notify(void* context, const uint8_t* buffer, size_t buffer_len
                    apdu_len,
                    SEOS_SM_MAX_FRAME,
                    response,
-                   seos_central_sm_event,
+                   seos_sm_event_to_view_dispatcher,
                    seos_central->seos)) {
                 secure_messaging_free(seos_central->secure_messaging);
                 seos_central->secure_messaging = NULL;

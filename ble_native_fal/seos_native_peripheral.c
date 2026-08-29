@@ -1,6 +1,7 @@
 #include "seos_native_peripheral_i.h"
 
 #include "seos_sm_command.h"
+#include "../seos_sm_event_ui.h"
 
 #define TAG "SeosNativePeripheral"
 
@@ -172,15 +173,6 @@ void seos_native_peripheral_stop(SeosNativePeripheral* seos_native_peripheral) {
     furi_thread_join(seos_native_peripheral->thread);
 }
 
-static void seos_native_peripheral_sm_event(void* context, SeosSmEvent event) {
-    Seos* seos = context;
-    if(event == SeosSmEventSioRequested) {
-        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventSIORequested);
-    } else if(event == SeosSmEventSioWritten) {
-        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventPollerSuccess);
-    }
-}
-
 void seos_native_peripheral_process_message_cred(
     SeosNativePeripheral* seos_native_peripheral,
     NativePeripheralMessage message) {
@@ -276,7 +268,7 @@ void seos_native_peripheral_process_message_cred(
                    apdu_len,
                    SEOS_SM_MAX_FRAME,
                    response,
-                   seos_native_peripheral_sm_event,
+                   seos_sm_event_to_view_dispatcher,
                    seos_native_peripheral->seos)) {
                 secure_messaging_free(seos_native_peripheral->secure_messaging);
                 seos_native_peripheral->secure_messaging = NULL;

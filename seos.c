@@ -1,7 +1,17 @@
 #include "seos_i.h"
 #include "seos_settings.h"
+#include "seos_sm_event_ui.h"
 
 #define TAG "Seos"
+
+void seos_sm_event_to_view_dispatcher(void* context, SeosSmEvent event) {
+    Seos* seos = context;
+    if(event == SeosSmEventSioRequested) {
+        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventSIORequested);
+    } else if(event == SeosSmEventSioWritten) {
+        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventPollerSuccess);
+    }
+}
 
 bool seos_custom_event_callback(void* context, uint32_t event) {
     furi_assert(context);

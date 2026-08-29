@@ -4,6 +4,7 @@
 #include "seos_common.h"
 #include "seos_protocol.h"
 #include "seos_sm_command.h"
+#include "seos_sm_event_ui.h"
 #include "secure_messaging.h"
 
 /* The app's own functions and objects, exposed so a plugin can resolve them.
@@ -52,6 +53,7 @@ static constexpr auto app_api_table = sort(create_array_t<sym_entry>(
          void*)),
     API_METHOD(seos_sm_command_get_response, void, (SecureMessaging*, size_t, BitBuffer*)),
     API_METHOD(seos_sm_command_matches, bool, (const uint8_t*, size_t)),
+    API_METHOD(seos_sm_event_to_view_dispatcher, void, (void*, SeosSmEvent)),
     API_METHOD(seos_worker_random_nonce, void, (uint8_t*, size_t)),
     API_METHOD(seos_log_bitbuffer, void, (char*, char*, BitBuffer*)),
     API_METHOD(seos_log_buffer, void, (char*, char*, uint8_t*, size_t)),

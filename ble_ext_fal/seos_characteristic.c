@@ -1,6 +1,7 @@
 #include "seos_characteristic_i.h"
 
 #include "seos_sm_command.h"
+#include "../seos_sm_event_ui.h"
 
 #define TAG "SeosCharacteristic"
 
@@ -217,15 +218,6 @@ void seos_characteristic_reader_flow(
     }
 }
 
-static void seos_characteristic_sm_event(void* context, SeosSmEvent event) {
-    Seos* seos = context;
-    if(event == SeosSmEventSioRequested) {
-        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventSIORequested);
-    } else if(event == SeosSmEventSioWritten) {
-        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventPollerSuccess);
-    }
-}
-
 void seos_characteristic_cred_flow(
     SeosCharacteristic* seos_characteristic,
     BitBuffer* attribute_value,
@@ -295,7 +287,7 @@ void seos_characteristic_cred_flow(
                    bit_buffer_get_size_bytes(attribute_value) - 1,
                    SEOS_SM_MAX_FRAME,
                    payload,
-                   seos_characteristic_sm_event,
+                   seos_sm_event_to_view_dispatcher,
                    seos_characteristic->seos)) {
                 secure_messaging_free(seos_characteristic->secure_messaging);
                 seos_characteristic->secure_messaging = NULL;
