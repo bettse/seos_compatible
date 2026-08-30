@@ -9,11 +9,11 @@
 #include <seos_iso14443_4.h>
 
 /* I-block, block number 0. Bit 2 is set in every PCB. */
-#define I_BLOCK      0x02
-#define I_BLOCK_NUM1 0x03
-#define I_BLOCK_CID  0x0a
-#define I_BLOCK_NAD  0x06
-#define I_BLOCK_BOTH 0x0e
+#define I_BLOCK       0x02
+#define I_BLOCK_NUM1  0x03
+#define I_BLOCK_CID   0x0a
+#define I_BLOCK_NAD   0x06
+#define I_BLOCK_BOTH  0x0e
 #define I_BLOCK_CHAIN 0x12
 
 /* R-block: top bits 101. NAK sets bit 4. */
@@ -161,7 +161,8 @@ static MunitResult test_header_only(const MunitParameter p[], void* d) {
     munit_assert_false(seos_iso14443_4_apdu_bounds(plain, sizeof(plain), &offset, &apdu_len));
 
     const uint8_t with_cid[] = {I_BLOCK_CID, 0x00};
-    munit_assert_false(seos_iso14443_4_apdu_bounds(with_cid, sizeof(with_cid), &offset, &apdu_len));
+    munit_assert_false(
+        seos_iso14443_4_apdu_bounds(with_cid, sizeof(with_cid), &offset, &apdu_len));
 
     const uint8_t with_both[] = {I_BLOCK_BOTH, 0x00, 0x00};
     munit_assert_false(
@@ -307,6 +308,25 @@ static MunitResult test_response_is_well_formed(const MunitParameter p[], void* 
     return MUNIT_OK;
 }
 
+/* A block that cannot be handled is refused with an R-block carrying the same
+ * block number, so the other end knows which one is meant and can recover. */
+static MunitResult test_nak_pcb(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    for(unsigned pcb = 0; pcb <= 0xff; pcb++) {
+        uint8_t nak = seos_iso14443_4_nak_pcb((uint8_t)pcb);
+
+        munit_assert_int(seos_iso14443_4_classify(nak), ==, SeosIso14443_4BlockR);
+        munit_assert_true(seos_iso14443_4_is_nak(nak));
+        munit_assert_uint8(nak & 0x01, ==, (uint8_t)pcb & 0x01);
+        munit_assert_uint8(nak & 0x02, ==, 0x02);
+        /* A card identifier is carried back; nothing else is. */
+        munit_assert_uint8(nak & 0x08, ==, (uint8_t)pcb & 0x08);
+    }
+
+    return MUNIT_OK;
+}
+
 /* ---- frame budget ---- */
 
 static MunitResult test_payload_budget(const MunitParameter p[], void* d) {
@@ -365,6 +385,7 @@ static MunitTest test_iso14443_4_cases[] = {
      NULL,
      MUNIT_TEST_OPTION_NONE,
      NULL},
+    {(char*)"/response/nak", test_nak_pcb, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
     {(char*)"/payload-budget", test_payload_budget, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
     {NULL, NULL, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
 };

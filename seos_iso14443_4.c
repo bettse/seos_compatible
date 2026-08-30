@@ -47,11 +47,7 @@ size_t seos_iso14443_4_header_len(uint8_t pcb) {
     return len;
 }
 
-bool seos_iso14443_4_apdu_bounds(
-    const uint8_t* data,
-    size_t len,
-    size_t* offset,
-    size_t* apdu_len) {
+bool seos_iso14443_4_apdu_bounds(const uint8_t* data, size_t len, size_t* offset, size_t* apdu_len) {
     /* The PCB must be present before the rest can be interpreted. */
     if(len < 1) return false;
 
@@ -78,6 +74,13 @@ uint8_t seos_iso14443_4_response_pcb(uint8_t rx_pcb, bool chaining) {
     uint8_t pcb = PCB_TYPE_I_VALUE | PCB_RESERVED | block_number | cid;
     if(chaining) pcb |= SEOS_ISO14443_4_PCB_CHAINING;
     return pcb;
+}
+
+uint8_t seos_iso14443_4_nak_pcb(uint8_t rx_pcb) {
+    uint8_t block_number = rx_pcb & SEOS_ISO14443_4_PCB_BLOCK_NUMBER;
+    uint8_t cid = rx_pcb & SEOS_ISO14443_4_PCB_CID;
+
+    return PCB_TYPE_R_VALUE | PCB_RESERVED | SEOS_ISO14443_4_PCB_NAK | block_number | cid;
 }
 
 /* PCB, a card identifier and a node address, and the two checksum bytes. */

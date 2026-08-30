@@ -660,8 +660,6 @@ bool seos_reader_select_adf_response(
     size_t offset,
     SeosCredential* credential,
     AuthParameters* params) {
-    seos_log_bitbuffer(TAG, "response", rx_buffer);
-
     /* The answer may sit behind a byte of transport framing, so `offset` says
      * where it starts. Everything below counts from there: a buffer that does
      * not reach past the offset has nothing to read, and a length measured
@@ -756,7 +754,6 @@ bool seos_reader_select_adf_response(
         FURI_LOG_W(TAG, "Unhandled cipher (%d)", params->cipher);
         return false;
     }
-    seos_log_buffer(TAG, "clear", clear, enc_len);
 
     /* What comes back is an application identifier and the diversifier the
      * card's keys were derived with. Read only as far as was decrypted: past
@@ -782,8 +779,6 @@ bool seos_reader_select_adf_response(
 
     credential->diversifier_len = diversifier.value_len;
     memcpy(credential->diversifier, diversifier.value, diversifier.value_len);
-
-    seos_log_buffer(TAG, "diversifier", credential->diversifier, credential->diversifier_len);
 
     return true;
 }

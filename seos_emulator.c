@@ -120,11 +120,10 @@ NfcCommand seos_worker_listener_inspect_reader(Seos* seos) {
 
 /* Set when the branch that ran produced a complete response, status word and
  * all, so the caller must not add one. */
-static bool seos_emulator_response_complete = false;
 
 NfcCommand seos_worker_listener_process_message(Seos* seos) {
     SeosEmulator* seos_emulator = seos->seos_emulator;
-    seos_emulator_response_complete = false;
+    seos_emulator->response_complete = false;
     BitBuffer* tx_buffer = seos_emulator->tx_buffer;
     NfcCommand ret = NfcCommandContinue;
 
@@ -195,7 +194,7 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
         } else {
             FURI_LOG_W(TAG, "Failed to match any ADF OID");
             seos_emulator_shill_select_adf(seos_emulator->tx_buffer);
-            seos_emulator_response_complete = true;
+            seos_emulator->response_complete = true;
         }
     } else if(seos_is_general_authenticate_1(apdu, apdu_len)) {
         seos_emulator_general_authenticate_1(seos_emulator->tx_buffer, seos_emulator->params);
@@ -208,7 +207,7 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
                seos_emulator->tx_buffer)) {
             FURI_LOG_W(TAG, "Failure in General Authenticate 2");
             seos_emulator_shill_authenticate(seos_emulator->tx_buffer);
-            seos_emulator_response_complete = true;
+            seos_emulator->response_complete = true;
             return ret;
         }
         view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventAuthenticated);
@@ -217,7 +216,7 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
     } else if(
         apdu_len >= SEOS_GET_RESPONSE_LEN &&
         memcmp(apdu, SEOS_GET_RESPONSE, SEOS_GET_RESPONSE_LEN - 1) == 0) {
-        seos_emulator_response_complete = true;
+        seos_emulator->response_complete = true;
         if(seos_emulator->secure_messaging) {
             seos_sm_command_get_response(
                 seos_emulator->secure_messaging,
@@ -228,7 +227,7 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
             seos_sm_append_status(tx_buffer, SECURE_MESSAGING_SW_INCORRECT_DO);
         }
     } else if(seos_sm_command_matches(apdu, apdu_len)) {
-        seos_emulator_response_complete = true;
+        seos_emulator->response_complete = true;
         if(seos_emulator->secure_messaging) {
             if(!seos_sm_command_handle(
                    seos_emulator->secure_messaging,
@@ -304,10 +303,14 @@ NfcCommand seos_worker_listener_callback(NfcGenericEvent event, void* context) {
             }
 
             if(seos_iso14443_4_is_chaining(rx_pcb)) {
-                /* More of this command is still to come. Acknowledging it
-                 * would need the pieces held until the last, which nothing
-                 * here sends, so it is refused rather than half handled. */
+                /* More of this command is still to come. The pieces are not
+                 * assembled -- nothing this serves needs a chained command --
+                 * but the other end is told so rather than left waiting for a
+                 * reply that never arrives. */
                 FURI_LOG_W(TAG, "Chained command not handled");
+                bit_buffer_append_byte(tx_buffer, seos_iso14443_4_nak_pcb(rx_pcb));
+                iso14443_crc_append(Iso14443CrcTypeA, tx_buffer);
+                nfc_listener_tx(seos->nfc, tx_buffer);
                 break;
             }
         }
@@ -343,7 +346,7 @@ NfcCommand seos_worker_listener_callback(NfcGenericEvent event, void* context) {
         /* The plain command handlers append their data and leave the status
          * word to us. The secure messaging ones answer in full, including a
          * chaining or error status word that must not be written over. */
-        if(!seos_emulator_response_complete &&
+        if(!seos_emulator->response_complete &&
            bit_buffer_get_size_bytes(seos_emulator->tx_buffer) > sizeof(uint16_t)) {
             uint8_t* statusword = (uint8_t*)bit_buffer_get_data(tx_buffer) +
                                   bit_buffer_get_size_bytes(tx_buffer) - sizeof(uint16_t);

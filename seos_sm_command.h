@@ -49,7 +49,8 @@ typedef void (*SeosSmEventCallback)(void* context, SeosSmEvent event);
 /* Handles one wrapped command.
  *
  * `apdu` points at the command with any transport framing already stripped.
- * The wrapped response is appended to `tx`, status word included. Nothing is
+ * The wrapped response is appended to `tx`, status word included.
+ *
  * Returns false when the session is finished -- a secure messaging error is
  * answered in the clear and the counters are no longer in step, so the caller
  * should drop the session.

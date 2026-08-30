@@ -51,11 +51,7 @@ size_t seos_iso14443_4_header_len(uint8_t pcb);
  * False if the frame is shorter than the header its PCB describes, or holds a
  * header and nothing else. Either case would underflow the remaining
  * length. */
-bool seos_iso14443_4_apdu_bounds(
-    const uint8_t* data,
-    size_t len,
-    size_t* offset,
-    size_t* apdu_len);
+bool seos_iso14443_4_apdu_bounds(const uint8_t* data, size_t len, size_t* offset, size_t* apdu_len);
 
 /* PCB for a reply to `rx_pcb`.
  *
@@ -63,6 +59,10 @@ bool seos_iso14443_4_apdu_bounds(
  * An I-block is answered with an I-block, an S-block with the same S-block,
  * and an R-block with an I-block carrying whatever is being resent. */
 uint8_t seos_iso14443_4_response_pcb(uint8_t rx_pcb, bool chaining);
+
+/* PCB for an R-block refusing the block just received, keeping its block
+ * number so the other end can tell which one is meant. */
+uint8_t seos_iso14443_4_nak_pcb(uint8_t rx_pcb);
 
 /* Bytes of payload a frame of `frame_size_max` can carry.
  *
