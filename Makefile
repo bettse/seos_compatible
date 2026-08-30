@@ -64,7 +64,7 @@ HOST_TEST_APP_SOURCES := \
 COVERAGE_DIR := build/coverage
 COVERAGE_FLAGS := -fprofile-instr-generate -fcoverage-mapping
 
-.PHONY: test-host test-asan coverage clean-host
+.PHONY: test-host test-asan check-plugin-api coverage clean-host
 
 test-host:
 	@mkdir -p build/host_tests
@@ -72,6 +72,23 @@ test-host:
 		$(HOST_TEST_SUPPORT) $(HOST_TEST_SOURCES) $(HOST_TEST_APP_SOURCES) \
 		-o build/host_tests/seos_tests $(HOST_TEST_LDFLAGS)
 	./build/host_tests/seos_tests
+
+# The plugins resolve the app's symbols at load time through the table in
+# seos_app_api_table_i.h. A symbol they call that is missing from it builds and
+# links clean and fails only on the device, when the stack is first used, so
+# check the two agree here.
+check-plugin-api:
+	@python3 -c 'import re,glob,sys;\
+table=set(re.findall(r"API_(?:METHOD|VARIABLE)\(\s*(\w+)", open("seos_app_api_table_i.h").read()));\
+hdrs=["seos_protocol.h","seos_sm_command.h","seos_common.h","secure_messaging.h","keys.h","seos_sm_event_ui.h"];\
+decl=set();\
+[decl.update(re.findall(r"^(?:extern\s+)?(?:const\s+)?[\w]+[\s\*]+(\w+)\s*\(", open(h).read(), re.M)) for h in hdrs];\
+[decl.update(re.findall(r"^extern\s+(?:const\s+)?\w+\s+\**(\w+)\s*[\[;]", open(h).read(), re.M)) for h in hdrs];\
+used=set();\
+[used.update(re.findall(r"\b([A-Za-z_]\w*)\b", open(f).read())) for f in glob.glob("ble_*_fal/*.c")+glob.glob("ble_shared/*.c")];\
+kw={"void","int","char","bool","long","short","float","double","unsigned","signed","typedef","return","if","while","for","sizeof","struct","enum","union","static","inline"};\
+ missing=sorted((decl & used) - table - kw);\
+sys.exit(print("Plugins call these, but the app does not export them:") or print("\n".join("  "+m for m in missing)) or 1) if missing else print("plugin API table covers every symbol the plugins call")'
 
 # The truncation sweeps only prove a parser returns false. Under the sanitiser
 # they also prove it did not read past the buffer to decide that.

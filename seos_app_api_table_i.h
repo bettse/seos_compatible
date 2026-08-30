@@ -25,10 +25,21 @@ static constexpr auto app_api_table = sort(
             seos_emulator_general_authenticate_2,
             bool,
             (const uint8_t*, size_t, SeosCredential*, AuthParameters*, BitBuffer*)),
+        API_METHOD(seos_is_general_authenticate_1, bool, (const uint8_t*, size_t)),
+        API_METHOD(seos_is_general_authenticate_2, bool, (const uint8_t*, size_t)),
+        API_METHOD(seos_build_general_authenticate_1, void, (uint8_t, uint8_t*)),
         API_METHOD(
             seos_reader_select_adf_response,
             bool,
             (BitBuffer*, size_t, SeosCredential*, AuthParameters*)),
+        API_METHOD(
+            seos_parse_ga1_response,
+            bool,
+            (const uint8_t*, size_t, uint8_t*, size_t)),
+        API_METHOD(
+            seos_parse_ga2_response,
+            bool,
+            (const uint8_t*, size_t, const uint8_t**, size_t*)),
         API_METHOD(
             seos_reader_generate_cryptogram,
             void,
@@ -62,6 +73,6 @@ static constexpr auto app_api_table = sort(
         API_VARIABLE(SEOS_ADF_OID, uint8_t[32]),
         API_VARIABLE(SEOS_ADF_OID_LEN, size_t),
         API_VARIABLE(SEOS_SM_HEADER, const uint8_t[4]),
-        API_VARIABLE(SEOS_GET_RESPONSE, const uint8_t[4]),
+        API_VARIABLE(SEOS_GET_RESPONSE, const uint8_t[SEOS_GET_RESPONSE_LEN]),
         API_VARIABLE(SEOS_SW_SUCCESS, const uint8_t[2]),
         API_VARIABLE(SEOS_SW_FILE_NOT_FOUND, const uint8_t[2])));

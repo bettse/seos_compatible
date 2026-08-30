@@ -11,5 +11,7 @@ jobs:
         uses: actions/checkout@v4
       - name: Install mbedTLS
         run: sudo apt-get update && sudo apt-get install -y libmbedtls-dev
+      - name: Check the plugin API table
+        run: make check-plugin-api
       - name: Run host tests
         run: make test-host
