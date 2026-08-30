@@ -14,7 +14,6 @@ static uint8_t ga1_response[] = {0x7c, 0x0a, 0x81, 0x08};
 // Emulation
 
 static uint8_t select_header[] = {0x00, 0xa4, 0x04, 0x00};
-static uint8_t select_adf_header[] = {0x80, 0xa5, 0x04, 0x00};
 
 SeosCharacteristic* seos_characteristic_alloc(Seos* seos) {
     SeosCharacteristic* seos_characteristic = malloc(sizeof(SeosCharacteristic));
@@ -251,6 +250,9 @@ void seos_characteristic_cred_flow(
 
     const size_t select_aid_len = sizeof(select_header) + 1 + sizeof(standard_seos_aid);
 
+    const uint8_t* oid_list = NULL;
+    size_t oid_list_len = 0;
+
     if(apdu_len >= sizeof(select_header) &&
        memcmp(apdu, select_header, sizeof(select_header)) == 0) {
         if(apdu_len >= select_aid_len &&
@@ -263,10 +265,7 @@ void seos_characteristic_cred_flow(
             bit_buffer_append_bytes(
                 payload, (uint8_t*)SEOS_SW_FILE_NOT_FOUND, sizeof(SEOS_SW_FILE_NOT_FOUND));
         }
-    } else if(memcmp(apdu, select_adf_header, sizeof(select_adf_header)) == 0) {
-        const uint8_t* oid_list = apdu + sizeof(select_adf_header) + 1;
-        size_t oid_list_len = apdu[sizeof(select_adf_header)];
-
+    } else if(seos_parse_select_adf(apdu, apdu_len, &oid_list, &oid_list_len)) {
         if(seos_emulator_select_adf(
                oid_list,
                oid_list_len,
@@ -284,7 +283,7 @@ void seos_characteristic_cred_flow(
     } else if(seos_is_general_authenticate_2(apdu, apdu_len)) {
         if(!seos_emulator_general_authenticate_2(
                apdu,
-               bit_buffer_get_size_bytes(attribute_value),
+               apdu_len,
                seos_characteristic->credential,
                &seos_characteristic->params,
                payload)) {
@@ -305,7 +304,7 @@ void seos_characteristic_cred_flow(
         } else {
             seos_sm_append_status(payload, SECURE_MESSAGING_SW_INCORRECT_DO);
         }
-    } else if(seos_sm_command_matches(apdu, sizeof(SEOS_SM_HEADER))) {
+    } else if(seos_sm_command_matches(apdu, apdu_len)) {
         if(seos_characteristic->secure_messaging) {
             /* apdu already skips the leading BLE start byte. */
             if(!seos_sm_command_handle(

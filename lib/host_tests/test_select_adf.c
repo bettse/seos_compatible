@@ -220,7 +220,124 @@ static MunitResult test_reader_clamps_long_answer(const MunitParameter p[], void
     return MUNIT_OK;
 }
 
+/* ---- the command a reader sends ---- */
+
+/* Header, the length the reader states, the list, and a trailing Le. */
+static size_t build_select_adf_command(uint8_t* out, size_t list_len, uint8_t stated_len) {
+    size_t len = 0;
+    out[len++] = 0x80;
+    out[len++] = 0xa5;
+    out[len++] = 0x04;
+    out[len++] = 0x00;
+    out[len++] = stated_len;
+    for(size_t i = 0; i < list_len; i++)
+        out[len++] = (uint8_t)(0x10 + i);
+    out[len++] = 0x00;
+    return len;
+}
+
+static MunitResult test_select_adf_command(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    uint8_t apdu[64];
+    size_t apdu_len = build_select_adf_command(apdu, 12, 12);
+
+    const uint8_t* list = NULL;
+    size_t list_len = 0;
+    munit_assert_true(seos_parse_select_adf(apdu, apdu_len, &list, &list_len));
+    munit_assert_size(list_len, ==, 12);
+    munit_assert_ptr_equal(list, apdu + 5);
+
+    return MUNIT_OK;
+}
+
+/* The length is the reader's claim, not a fact. A command naming more than it
+ * carries must be refused rather than searched. */
+static MunitResult test_select_adf_overlong_length(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    uint8_t apdu[64];
+    size_t apdu_len = build_select_adf_command(apdu, 4, 200);
+
+    const uint8_t* list = NULL;
+    size_t list_len = 0;
+    munit_assert_false(seos_parse_select_adf(apdu, apdu_len, &list, &list_len));
+
+    return MUNIT_OK;
+}
+
+/* Every prefix short of the stated list is incomplete. */
+static MunitResult test_select_adf_truncated(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    uint8_t apdu[64];
+    size_t apdu_len = build_select_adf_command(apdu, 12, 12);
+
+    const uint8_t* list = NULL;
+    size_t list_len = 0;
+    for(size_t cut = 0; cut < apdu_len - 1; cut++) {
+        munit_assert_false(seos_parse_select_adf(apdu, cut, &list, &list_len));
+    }
+    /* Complete without the trailing Le. */
+    munit_assert_true(seos_parse_select_adf(apdu, apdu_len - 1, &list, &list_len));
+
+    return MUNIT_OK;
+}
+
+static MunitResult test_select_adf_wrong_header(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    uint8_t apdu[64];
+    size_t apdu_len = build_select_adf_command(apdu, 8, 8);
+    apdu[1] = 0xa4;
+
+    const uint8_t* list = NULL;
+    size_t list_len = 0;
+    munit_assert_false(seos_parse_select_adf(apdu, apdu_len, &list, &list_len));
+
+    return MUNIT_OK;
+}
+
+/* A command naming nothing has nothing to match. */
+static MunitResult test_select_adf_empty_list(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    uint8_t apdu[64];
+    size_t apdu_len = build_select_adf_command(apdu, 0, 0);
+
+    const uint8_t* list = NULL;
+    size_t list_len = 0;
+    munit_assert_false(seos_parse_select_adf(apdu, apdu_len, &list, &list_len));
+
+    return MUNIT_OK;
+}
+
 static MunitTest test_select_adf_cases[] = {
+    {(char*)"/command/ok", test_select_adf_command, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
+    {(char*)"/command/overlong",
+     test_select_adf_overlong_length,
+     NULL,
+     NULL,
+     MUNIT_TEST_OPTION_NONE,
+     NULL},
+    {(char*)"/command/truncated",
+     test_select_adf_truncated,
+     NULL,
+     NULL,
+     MUNIT_TEST_OPTION_NONE,
+     NULL},
+    {(char*)"/command/wrong-header",
+     test_select_adf_wrong_header,
+     NULL,
+     NULL,
+     MUNIT_TEST_OPTION_NONE,
+     NULL},
+    {(char*)"/command/empty-list",
+     test_select_adf_empty_list,
+     NULL,
+     NULL,
+     MUNIT_TEST_OPTION_NONE,
+     NULL},
     {(char*)"/round-trip/aes", test_round_trip_aes, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
     {(char*)"/round-trip/des", test_round_trip_des, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
     {(char*)"/varies/des", test_answer_varies_des, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},

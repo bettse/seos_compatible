@@ -2,6 +2,9 @@
 
 #define TAG "SeosL2Cap"
 
+/* Largest PDU that can be reassembled. */
+#define SEOS_L2CAP_ACCUMULATOR_SIZE 256
+
 #define ACL_START_NO_FLUSH 0x00
 #define ACL_CONT           0x01
 #define ACL_START          0x02
@@ -22,8 +25,8 @@ SeosL2Cap* seos_l2cap_alloc(Seos* seos) {
     memset(seos_l2cap, 0, sizeof(SeosL2Cap));
 
     // TODO: match MTU
-    seos_l2cap->tx_accumulator = bit_buffer_alloc(256);
-    seos_l2cap->rx_accumulator = bit_buffer_alloc(256);
+    seos_l2cap->tx_accumulator = bit_buffer_alloc(SEOS_L2CAP_ACCUMULATOR_SIZE);
+    seos_l2cap->rx_accumulator = bit_buffer_alloc(SEOS_L2CAP_ACCUMULATOR_SIZE);
 
     seos_l2cap->seos = seos;
     seos_l2cap->seos_hci = seos_hci_alloc(seos);
@@ -75,18 +78,25 @@ void seos_l2cap_recv(void* context, uint16_t handle, uint8_t flags, BitBuffer* p
             seos_log_bitbuffer(TAG, "cont", pdu);
             return;
         }
-        // No header this time
-        bit_buffer_append_bytes(seos_l2cap->rx_accumulator, data, bit_buffer_get_size_bytes(pdu));
-
-        // Check for overage
-        if(bit_buffer_get_size_bytes(seos_l2cap->rx_accumulator) > seos_l2cap->pdu_len) {
+        /* Checked before the append, not after: appending past the
+         * accumulator's capacity asserts and takes the app down, and the
+         * length being continued to comes from the peer. */
+        size_t held = bit_buffer_get_size_bytes(seos_l2cap->rx_accumulator);
+        size_t room = SEOS_L2CAP_ACCUMULATOR_SIZE - held;
+        if(pdu_len > room || held + pdu_len > seos_l2cap->pdu_len) {
             FURI_LOG_W(
                 TAG,
-                "Oh shit, too much data: %d > %d",
-                bit_buffer_get_size_bytes(seos_l2cap->rx_accumulator),
+                "Continuation of %zu will not fit %zu of %d",
+                pdu_len,
+                held,
                 seos_l2cap->pdu_len);
-            seos_log_bitbuffer(TAG, "cont", seos_l2cap->rx_accumulator);
+            bit_buffer_reset(seos_l2cap->rx_accumulator);
+            seos_l2cap->pdu_len = 0;
+            return;
         }
+
+        // No header this time
+        bit_buffer_append_bytes(seos_l2cap->rx_accumulator, data, pdu_len);
         // Full PDU
         if(bit_buffer_get_size_bytes(seos_l2cap->rx_accumulator) == seos_l2cap->pdu_len) {
             // FURI_LOG_I(TAG, "Complete reassembled PDU");
@@ -108,6 +118,15 @@ void seos_l2cap_recv(void* context, uint16_t handle, uint8_t flags, BitBuffer* p
         uint16_t payload_len = header->payload_len;
         uint16_t cid = header->cid;
         size_t carried = pdu_len - sizeof(struct l2cap_header);
+
+        /* The header states this. Anything the accumulator cannot hold will
+         * never complete, so it is refused here rather than part way in. */
+        if(payload_len > SEOS_L2CAP_ACCUMULATOR_SIZE) {
+            FURI_LOG_W(TAG, "PDU of %d is larger than we can assemble", payload_len);
+            bit_buffer_reset(seos_l2cap->rx_accumulator);
+            seos_l2cap->pdu_len = 0;
+            return;
+        }
 
         if(carried < payload_len) {
             // FURI_LOG_W(TAG, "Incomplete PDU");

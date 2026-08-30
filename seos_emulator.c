@@ -18,7 +18,6 @@ static uint8_t OPERATION_SELECTOR_POST_RESET[] =
     {0xa0, 0x00, 0x00, 0x03, 0x82, 0x00, 0x31, 0x00, 0x01, 0x01};
 static uint8_t DESFIRE_ISO_AID[] = {0xd2, 0x76, 0x00, 0x00, 0x85, 0x01, 0x00};
 
-static uint8_t select_adf_header[] = {0x80, 0xa5, 0x04, 0x00};
 
 SeosEmulator* seos_emulator_alloc(SeosCredential* credential) {
     SeosEmulator* seos_emulator = malloc(sizeof(SeosEmulator));
@@ -143,6 +142,9 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
     }
     const uint8_t* apdu = bit_buffer_get_data(seos_emulator->rx_buffer) + offset;
 
+    const uint8_t* oid_list = NULL;
+    size_t oid_list_len = 0;
+
     if(apdu_len >= sizeof(select_header) &&
        memcmp(apdu, select_header, sizeof(select_header)) == 0) {
         seos_emulator->credential->use_hardcoded = false;
@@ -198,11 +200,7 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
                 (uint8_t*)SEOS_SW_FILE_NOT_FOUND,
                 sizeof(SEOS_SW_FILE_NOT_FOUND));
         }
-    } else if(memcmp(apdu, select_adf_header, sizeof(select_adf_header)) == 0) {
-        // +1 to skip APDU length byte
-        const uint8_t* oid_list = apdu + sizeof(select_adf_header) + 1;
-        size_t oid_list_len = apdu[sizeof(select_adf_header)];
-
+    } else if(seos_parse_select_adf(apdu, apdu_len, &oid_list, &oid_list_len)) {
         if(seos_emulator_select_adf(
                oid_list,
                oid_list_len,
@@ -220,7 +218,7 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
     } else if(seos_is_general_authenticate_2(apdu, apdu_len)) {
         if(!seos_emulator_general_authenticate_2(
                apdu,
-               bit_buffer_get_size_bytes(seos_emulator->rx_buffer),
+               apdu_len,
                seos_emulator->credential,
                &seos_emulator->params,
                seos_emulator->tx_buffer)) {

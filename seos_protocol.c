@@ -527,6 +527,33 @@ bool seos_reader_verify_cryptogram(AuthParameters* params, const uint8_t* crypto
 #define DO_ADF_OID         0x06
 #define DO_ADF_DIVERSIFIER 0xcf
 
+/* CLA, INS, P1 and P2 of a select by application identifier. */
+static const uint8_t select_adf_command_header[] = {0x80, 0xa5, 0x04, 0x00};
+
+bool seos_parse_select_adf(
+    const uint8_t* apdu,
+    size_t apdu_len,
+    const uint8_t** oid_list,
+    size_t* oid_list_len) {
+    /* The header, then the length byte after it. */
+    if(apdu_len <= sizeof(select_adf_command_header)) return false;
+    if(memcmp(apdu, select_adf_command_header, sizeof(select_adf_command_header)) != 0)
+        return false;
+
+    size_t stated = apdu[sizeof(select_adf_command_header)];
+    size_t body_offset = sizeof(select_adf_command_header) + 1;
+
+    /* Nothing named is nothing to match. */
+    if(stated == 0) return false;
+
+    /* Compared rather than added: body_offset + stated could wrap. */
+    if(stated > apdu_len - body_offset) return false;
+
+    *oid_list = apdu + body_offset;
+    *oid_list_len = stated;
+    return true;
+}
+
 bool seos_response_status(const uint8_t* data, size_t len, uint16_t* status_word) {
     if(len < sizeof(uint16_t)) return false;
 

@@ -42,6 +42,18 @@ void seos_build_general_authenticate_1(
     uint8_t key_no,
     uint8_t out[SEOS_GENERAL_AUTHENTICATE_1_LEN]);
 
+/* The application list a SELECT ADF names.
+ *
+ * `oid_list` points into `apdu`. The command states its own length, which comes
+ * from the reader, so it is checked against what the APDU actually holds before
+ * anything walks it. False if the header does not match, the command is shorter
+ * than it claims, or it names nothing. */
+bool seos_parse_select_adf(
+    const uint8_t* apdu,
+    size_t apdu_len,
+    const uint8_t** oid_list,
+    size_t* oid_list_len);
+
 /* Answers that give nothing away.
  *
  * A card that returns an error when it does not hold what was asked for, or
