@@ -2,3 +2,5 @@ dist
 .vscode
 keys.txt
 *_keys.txt
+build
+__pycache__

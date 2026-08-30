@@ -16,4 +16,27 @@ App(
     fap_icon_assets="images",  # Image assets to compile for this application
     fap_file_assets="files",
     fap_libs=["mbedtls"],
+    # lib/ holds the host test suite. The *_fal directories are built as
+    # plugins below, so they must not also go into the app.
+    sources=["*.c*", "!lib", "!ble_ext_fal", "!ble_native_fal", "!ble_shared"],
+)
+
+# The BLE stacks are most of the image and most sessions never use one, so
+# they load on demand. fal_embedded ships them inside the .fap.
+App(
+    appid="plugin_ble_ext",
+    apptype=FlipperAppType.PLUGIN,
+    entry_point="plugin_ble_ext_ep",
+    requires=["seos"],
+    sources=["ble_ext_fal/*.c", "ble_shared/*.c"],
+    fal_embedded=True,
+)
+
+App(
+    appid="plugin_ble_native",
+    apptype=FlipperAppType.PLUGIN,
+    entry_point="plugin_ble_native_ep",
+    requires=["seos"],
+    sources=["ble_native_fal/*.c", "ble_shared/*.c"],
+    fal_embedded=True,
 )
