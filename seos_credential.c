@@ -152,25 +152,40 @@ bool seos_credential_file_select_seos(SeosCredential* seos_credential) {
     furi_assert(seos_credential);
     bool res = false;
 
-    FuriString* seos_app_folder = furi_string_alloc_set(STORAGE_APP_DATA_PATH_PREFIX);
-
     DialogsFileBrowserOptions browser_options;
     dialog_file_browser_set_basic_options(
         &browser_options, SEOS_APP_BROWSER_EXTENSIONS, &I_Nfc_10px);
     browser_options.base_path = STORAGE_APP_DATA_PATH_PREFIX;
 
-    res = dialog_file_browser_show(
-        seos_credential->dialogs, seos_credential->load_path, seos_app_folder, &browser_options);
+    /* The browser starts where this path points and puts the choice back in it,
+     * so it is the same string both ways. Starting from the folder it will
+     * browse means it agrees with its own base path, which is what tells it
+     * that back should close it rather than move up a level.
+     *
+     * Kept separate from load_path, which records the file this credential came
+     * from: a cancelled browse must not leave a folder there for a later save
+     * or delete to act on. */
+    FuriString* browse_path = furi_string_alloc();
+    if(furi_string_empty(seos_credential->load_path)) {
+        furi_string_set_str(browse_path, STORAGE_APP_DATA_PATH_PREFIX);
+    } else {
+        furi_string_set(browse_path, seos_credential->load_path);
+    }
 
-    furi_string_free(seos_app_folder);
+    res = dialog_file_browser_show(
+        seos_credential->dialogs, browse_path, browse_path, &browser_options);
+
     if(res) {
-        FuriString* filename;
-        filename = furi_string_alloc();
+        /* Only a real choice updates where this credential came from. */
+        furi_string_set(seos_credential->load_path, browse_path);
+
+        FuriString* filename = furi_string_alloc();
         path_extract_filename(seos_credential->load_path, filename, true);
         strncpy(seos_credential->name, furi_string_get_cstr(filename), SEOS_FILE_NAME_MAX_LENGTH);
         res = seos_credential_file_load(seos_credential, seos_credential->load_path, true);
         furi_string_free(filename);
     }
+    furi_string_free(browse_path);
 
     return res;
 }
@@ -206,24 +221,33 @@ bool seos_credential_file_select_seader(SeosCredential* seos_credential) {
     furi_assert(seos_credential);
     bool res = false;
 
-    FuriString* app_folder = furi_string_alloc_set(SEADER_PATH);
-
     DialogsFileBrowserOptions browser_options;
     dialog_file_browser_set_basic_options(&browser_options, SEADER_APP_EXTENSION, &I_Nfc_10px);
     browser_options.base_path = SEADER_PATH;
 
-    res = dialog_file_browser_show(
-        seos_credential->dialogs, seos_credential->load_path, app_folder, &browser_options);
+    /* The other tool's folder, for the same reasons as above. */
+    FuriString* browse_path = furi_string_alloc();
+    if(furi_string_empty(seos_credential->load_path) ||
+       !furi_string_start_with_str(seos_credential->load_path, SEADER_PATH)) {
+        furi_string_set_str(browse_path, SEADER_PATH);
+    } else {
+        furi_string_set(browse_path, seos_credential->load_path);
+    }
 
-    furi_string_free(app_folder);
+    res = dialog_file_browser_show(
+        seos_credential->dialogs, browse_path, browse_path, &browser_options);
+
     if(res) {
-        FuriString* filename;
-        filename = furi_string_alloc();
+        /* Only a real choice updates where this credential came from. */
+        furi_string_set(seos_credential->load_path, browse_path);
+
+        FuriString* filename = furi_string_alloc();
         path_extract_filename(seos_credential->load_path, filename, true);
         strncpy(seos_credential->name, furi_string_get_cstr(filename), SEOS_FILE_NAME_MAX_LENGTH);
         res = seos_credential_file_load_seader(seos_credential, seos_credential->load_path, true);
         furi_string_free(filename);
     }
+    furi_string_free(browse_path);
 
     return res;
 }
