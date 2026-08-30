@@ -42,6 +42,18 @@ void seos_build_general_authenticate_1(
     uint8_t key_no,
     uint8_t out[SEOS_GENERAL_AUTHENTICATE_1_LEN]);
 
+/* The application identifier a SELECT names.
+ *
+ * `aid` points into `apdu`, and its length is the one the command states,
+ * checked against what the command actually carries. Callers compare the
+ * identifier against the ones they serve; a length that does not match one of
+ * those is not that application. */
+bool seos_parse_select_aid(
+    const uint8_t* apdu,
+    size_t apdu_len,
+    const uint8_t** aid,
+    size_t* aid_len);
+
 /* The application list a SELECT ADF names.
  *
  * `oid_list` points into `apdu`. The command states its own length, which comes

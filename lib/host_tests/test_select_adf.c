@@ -312,7 +312,91 @@ static MunitResult test_select_adf_empty_list(const MunitParameter p[], void* d)
     return MUNIT_OK;
 }
 
+/* ---- selecting an application by identifier ---- */
+
+static size_t build_select_aid_command(uint8_t* out, size_t aid_len, uint8_t stated_len) {
+    size_t len = 0;
+    out[len++] = 0x00;
+    out[len++] = 0xa4;
+    out[len++] = 0x04;
+    out[len++] = 0x00;
+    out[len++] = stated_len;
+    for(size_t i = 0; i < aid_len; i++)
+        out[len++] = (uint8_t)(0xa0 + i);
+    out[len++] = 0x00;
+    return len;
+}
+
+static MunitResult test_select_aid_command(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    uint8_t apdu[64];
+    size_t apdu_len = build_select_aid_command(apdu, 10, 10);
+
+    const uint8_t* aid = NULL;
+    size_t aid_len = 0;
+    munit_assert_true(seos_parse_select_aid(apdu, apdu_len, &aid, &aid_len));
+    munit_assert_size(aid_len, ==, 10);
+    munit_assert_ptr_equal(aid, apdu + 5);
+
+    return MUNIT_OK;
+}
+
+/* The identifier is compared against several known ones, each ten bytes. A
+ * command that stops before then must not be read that far. */
+static MunitResult test_select_aid_truncated(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    uint8_t apdu[64];
+    size_t apdu_len = build_select_aid_command(apdu, 10, 10);
+
+    const uint8_t* aid = NULL;
+    size_t aid_len = 0;
+    for(size_t cut = 0; cut < apdu_len - 1; cut++) {
+        munit_assert_false(seos_parse_select_aid(apdu, cut, &aid, &aid_len));
+    }
+    munit_assert_true(seos_parse_select_aid(apdu, apdu_len - 1, &aid, &aid_len));
+
+    return MUNIT_OK;
+}
+
+static MunitResult test_select_aid_overlong(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    uint8_t apdu[64];
+    size_t apdu_len = build_select_aid_command(apdu, 4, 200);
+
+    const uint8_t* aid = NULL;
+    size_t aid_len = 0;
+    munit_assert_false(seos_parse_select_aid(apdu, apdu_len, &aid, &aid_len));
+
+    return MUNIT_OK;
+}
+
+static MunitResult test_select_aid_wrong_header(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    uint8_t apdu[64];
+    size_t apdu_len = build_select_aid_command(apdu, 10, 10);
+    apdu[1] = 0xa5;
+
+    const uint8_t* aid = NULL;
+    size_t aid_len = 0;
+    munit_assert_false(seos_parse_select_aid(apdu, apdu_len, &aid, &aid_len));
+
+    return MUNIT_OK;
+}
+
 static MunitTest test_select_adf_cases[] = {
+    {(char*)"/aid/ok", test_select_aid_command, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
+    {(char*)"/aid/truncated", test_select_aid_truncated, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
+    {(char*)"/aid/overlong", test_select_aid_overlong, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
+    {(char*)"/aid/wrong-header",
+     test_select_aid_wrong_header,
+     NULL,
+     NULL,
+     MUNIT_TEST_OPTION_NONE,
+     NULL},
     {(char*)"/command/ok", test_select_adf_command, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
     {(char*)"/command/overlong",
      test_select_adf_overlong_length,

@@ -26,9 +26,14 @@ static constexpr auto app_api_table = sort(
             bool,
             (const uint8_t*, size_t, SeosCredential*, AuthParameters*, BitBuffer*)),
         API_METHOD(
+            seos_parse_select_aid,
+            bool,
+            (const uint8_t*, size_t, const uint8_t**, size_t*)),
+        API_METHOD(
             seos_parse_select_adf,
             bool,
             (const uint8_t*, size_t, const uint8_t**, size_t*)),
+        API_METHOD(seos_emulator_shill_authenticate, void, (BitBuffer*)),
         API_METHOD(seos_is_general_authenticate_1, bool, (const uint8_t*, size_t)),
         API_METHOD(seos_is_general_authenticate_2, bool, (const uint8_t*, size_t)),
         API_METHOD(seos_build_general_authenticate_1, void, (uint8_t, uint8_t*)),

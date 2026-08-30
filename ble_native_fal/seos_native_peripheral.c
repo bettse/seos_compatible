@@ -14,7 +14,6 @@ static uint8_t ga1_response[] = {0x7c, 0x0a, 0x81, 0x08};
 
 // Emulation
 
-static uint8_t select_header[] = {0x00, 0xa4, 0x04, 0x00};
 
 int32_t seos_native_peripheral_task(void* context);
 
@@ -111,6 +110,10 @@ void seos_native_peripheral_free(SeosNativePeripheral* seos_native_peripheral) {
 
     bit_buffer_free(seos_native_peripheral->rx_buffer);
 
+    if(seos_native_peripheral->secure_messaging) {
+        secure_messaging_free(seos_native_peripheral->secure_messaging);
+    }
+
     free(seos_native_peripheral);
 }
 
@@ -190,20 +193,15 @@ void seos_native_peripheral_process_message_cred(
     const uint8_t* apdu = bit_buffer_get_data(seos_native_peripheral->rx_buffer);
     const size_t apdu_len = bit_buffer_get_size_bytes(seos_native_peripheral->rx_buffer);
 
+    const uint8_t* aid = NULL;
+    size_t aid_len = 0;
     const uint8_t* oid_list = NULL;
     size_t oid_list_len = 0;
 
-    /* A select names an application after its header, and the test below reads
-     * that far in. */
-    const size_t select_aid_len = sizeof(select_header) + 1 + sizeof(standard_seos_aid);
-
-    if(apdu_len >= sizeof(select_header) &&
-       memcmp(apdu, select_header, sizeof(select_header)) == 0) {
-        if(apdu_len >= select_aid_len &&
-           memcmp(apdu + sizeof(select_header) + 1, standard_seos_aid, sizeof(standard_seos_aid)) ==
-               0) {
+    if(seos_parse_select_aid(apdu, apdu_len, &aid, &aid_len)) {
+        if((aid_len == sizeof(standard_seos_aid) && memcmp(aid, standard_seos_aid, aid_len) == 0)) {
             seos_emulator_select_aid(
-                response, apdu + sizeof(select_header) + 1, sizeof(standard_seos_aid));
+                response, aid, aid_len);
             bit_buffer_append_bytes(response, (uint8_t*)SEOS_SW_SUCCESS, sizeof(SEOS_SW_SUCCESS));
         } else {
             bit_buffer_append_bytes(
@@ -232,16 +230,25 @@ void seos_native_peripheral_process_message_cred(
                seos_native_peripheral->credential,
                &seos_native_peripheral->params,
                response)) {
+            /* The cryptogram did not verify, so the nonces it was built from
+             * are not agreed. Answering well formed nonsense gives away no
+             * more than a refusal would, and no session is started: keys
+             * derived from unverified nonces are not a session. */
             FURI_LOG_W(TAG, "Failure in General Authenticate 2");
+            bit_buffer_reset(response);
+            seos_emulator_shill_authenticate(response);
         } else {
             bit_buffer_append_bytes(response, (uint8_t*)SEOS_SW_SUCCESS, sizeof(SEOS_SW_SUCCESS));
-        }
 
-        view_dispatcher_send_custom_event(
-            seos_native_peripheral->seos->view_dispatcher, SeosCustomEventAuthenticated);
-        // Prepare for future communication
-        seos_native_peripheral->secure_messaging =
-            secure_messaging_alloc(&seos_native_peripheral->params);
+            view_dispatcher_send_custom_event(
+                seos_native_peripheral->seos->view_dispatcher, SeosCustomEventAuthenticated);
+
+            /* Replacing a session without freeing it leaks the old one. */
+            if(seos_native_peripheral->secure_messaging) {
+                secure_messaging_free(seos_native_peripheral->secure_messaging);
+            }
+            seos_native_peripheral->secure_messaging = secure_messaging_alloc(&seos_native_peripheral->params);
+        }
     } else if(memcmp(apdu, SEOS_GET_RESPONSE, sizeof(SEOS_GET_RESPONSE) - 1) == 0) {
         if(seos_native_peripheral->secure_messaging) {
             seos_sm_command_get_response(
@@ -377,19 +384,25 @@ void seos_native_peripheral_process_message_reader(
 
         seos_native_peripheral->phase = GENERAL_AUTHENTICATION_2;
     } else if(seos_parse_ga2_response(rx_data, rx_len, &card_cryptogram, &card_cryptogram_len)) {
-        if(card_cryptogram_len == SEOS_CARD_CRYPTOGRAM_LEN) {
-            if(!seos_reader_verify_cryptogram(&seos_native_peripheral->params, card_cryptogram)) {
-                FURI_LOG_W(TAG, "Card cryptogram failed verification");
-                bit_buffer_free(response);
-                return;
-            }
-            FURI_LOG_I(TAG, "Authenticated");
-            view_dispatcher_send_custom_event(
-                seos_native_peripheral->seos->view_dispatcher, SeosCustomEventAuthenticated);
-        } else {
+        /* Nothing past here happens unless the card proved it holds the key:
+         * a session built on an unverified cryptogram is not a session. */
+        if(card_cryptogram_len != SEOS_CARD_CRYPTOGRAM_LEN) {
             FURI_LOG_W(TAG, "Unhandled card cryptogram size %d", card_cryptogram_len);
+            bit_buffer_free(response);
+            return;
         }
+        if(!seos_reader_verify_cryptogram(&seos_native_peripheral->params, card_cryptogram)) {
+            FURI_LOG_W(TAG, "Card cryptogram failed verification");
+            bit_buffer_free(response);
+            return;
+        }
+        FURI_LOG_I(TAG, "Authenticated");
+        view_dispatcher_send_custom_event(
+            seos_native_peripheral->seos->view_dispatcher, SeosCustomEventAuthenticated);
 
+        if(seos_native_peripheral->secure_messaging) {
+            secure_messaging_free(seos_native_peripheral->secure_messaging);
+        }
         seos_native_peripheral->secure_messaging =
             secure_messaging_alloc(&seos_native_peripheral->params);
         if(!seos_native_peripheral->secure_messaging) {
