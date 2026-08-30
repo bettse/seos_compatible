@@ -1,9 +1,8 @@
 /* What a long session costs in allocations.
  *
- * Wrapping and unwrapping size their scratch from the message, which removed a
- * fixed ceiling and the per-call stack that went with it. Two reviewers
- * suggested a session-level buffer instead, to avoid fragmenting the heap over
- * a long exchange. This measures before deciding.
+ * Wrapping and unwrapping size their scratch from the message rather than from
+ * a fixed ceiling, so each one allocates. This pins how much churn that makes,
+ * and that none of it is retained.
  */
 #include "munit.h"
 #include "test_helpers.h"
@@ -98,9 +97,8 @@ static MunitResult test_long_session_allocation(const MunitParameter p[], void* 
      * are the buffer mock taking two allocations where the device takes one,
      * so this is an upper bound on churn rather than the device's figure.
      *
-     * Pinned so a change that grows it shows up. Whether this much churn
-     * fragments anything is a question about the device's allocator, not this
-     * one, and cannot be answered here. */
+     * Whether this much churn fragments anything is a question about the
+     * device's allocator and cannot be answered here. */
     munit_assert_uint(per_exchange, <=, 20);
 
     bit_buffer_free(wire);

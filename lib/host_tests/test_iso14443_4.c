@@ -320,8 +320,15 @@ static MunitResult test_nak_pcb(const MunitParameter p[], void* d) {
         munit_assert_true(seos_iso14443_4_is_nak(nak));
         munit_assert_uint8(nak & 0x01, ==, (uint8_t)pcb & 0x01);
         munit_assert_uint8(nak & 0x02, ==, 0x02);
-        /* A card identifier is carried back; nothing else is. */
+        /* A card identifier is carried back; nothing else is. Setting the bit
+         * obliges the caller to send the byte, so the header length says how
+         * long the block is. */
         munit_assert_uint8(nak & 0x08, ==, (uint8_t)pcb & 0x08);
+        if(nak & 0x08) {
+            munit_assert_size(seos_iso14443_4_header_len(nak), ==, 2);
+        } else {
+            munit_assert_size(seos_iso14443_4_header_len(nak), ==, 1);
+        }
     }
 
     return MUNIT_OK;

@@ -211,8 +211,16 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
             return ret;
         }
         view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventAuthenticated);
-        // Prepare for future communication
+
+        /* Replacing a session without freeing it leaks the old one, keys
+         * included, which is what freeing it clears. */
+        if(seos_emulator->secure_messaging) {
+            secure_messaging_free(seos_emulator->secure_messaging);
+        }
         seos_emulator->secure_messaging = secure_messaging_alloc(&seos_emulator->params);
+        if(!seos_emulator->secure_messaging) {
+            FURI_LOG_W(TAG, "Could not start secure messaging");
+        }
     } else if(
         apdu_len >= SEOS_GET_RESPONSE_LEN &&
         memcmp(apdu, SEOS_GET_RESPONSE, SEOS_GET_RESPONSE_LEN - 1) == 0) {
@@ -308,7 +316,13 @@ NfcCommand seos_worker_listener_callback(NfcGenericEvent event, void* context) {
                  * but the other end is told so rather than left waiting for a
                  * reply that never arrives. */
                 FURI_LOG_W(TAG, "Chained command not handled");
-                bit_buffer_append_byte(tx_buffer, seos_iso14443_4_nak_pcb(rx_pcb));
+                uint8_t nak_pcb = seos_iso14443_4_nak_pcb(rx_pcb);
+                bit_buffer_append_byte(tx_buffer, nak_pcb);
+                /* The identifier is carried back whenever the bit says it is
+                 * there; a block that claims one and omits it is malformed. */
+                if((nak_pcb & SEOS_ISO14443_4_PCB_CID) && rx_len > 1) {
+                    bit_buffer_append_byte(tx_buffer, rx_data[1]);
+                }
                 iso14443_crc_append(Iso14443CrcTypeA, tx_buffer);
                 nfc_listener_tx(seos->nfc, tx_buffer);
                 break;

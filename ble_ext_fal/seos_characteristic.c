@@ -106,10 +106,6 @@ void seos_characteristic_reader_flow(
         return;
     }
 
-    // 022f20180014000400
-    // 520c00
-    // c0 6f0c840a a0000004400001010001
-    // 9000
     /* The select answer names the application four bytes into the response. */
     const size_t select_aid_offset = 4;
     if(rx_len >= select_aid_offset + sizeof(standard_seos_aid) &&

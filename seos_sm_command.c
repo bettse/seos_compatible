@@ -131,9 +131,9 @@ static void answer_status(SecureMessaging* secure_messaging, BitBuffer* tx, uint
  * octets are allowed here. */
 /* Reads the tags a request names.
  *
- * A tag list holds one tag. An extended header list holds a run of them, which
- * a reader uses to ask for several objects at once; the tags are simply
- * concatenated, with no length between them. */
+ * A tag list holds one tag. An extended header list holds a run of tag and
+ * length pairs, which a reader uses to ask for several objects at once. Only a
+ * length of zero is served, meaning the whole object. */
 static bool parse_requested_tags(
     const uint8_t* data,
     size_t data_len,

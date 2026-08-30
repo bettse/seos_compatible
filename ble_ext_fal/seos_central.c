@@ -118,10 +118,15 @@ void seos_central_notify(void* context, const uint8_t* buffer, size_t buffer_len
             }
             seos_central->secure_messaging = secure_messaging_alloc(&seos_central->params);
             bit_buffer_append_bytes(response, (uint8_t*)SEOS_SW_SUCCESS, sizeof(SEOS_SW_SUCCESS));
+            seos_central->phase = REQUEST_SIO;
         } else {
+            /* Silence tells the other end its key was wrong just as clearly as
+             * an error would. Well formed nonsense does not, and the phase
+             * stays where it is: there is no session to carry it forward. */
+            FURI_LOG_W(TAG, "Failure in General Authenticate 2");
             bit_buffer_reset(response);
+            seos_emulator_shill_authenticate(response);
         }
-        seos_central->phase = REQUEST_SIO;
     } else if(
         apdu_len >= SEOS_GET_RESPONSE_LEN &&
         memcmp(apdu, SEOS_GET_RESPONSE, SEOS_GET_RESPONSE_LEN - 1) == 0) {

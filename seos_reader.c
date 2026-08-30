@@ -339,6 +339,11 @@ NfcCommand seos_reader_general_authenticate_2(SeosReader* seos_reader) {
     }
     FURI_LOG_I(TAG, "Authenticated successfully with key no %d", seos_reader->params.key_no);
 
+    /* A retry with another keyset authenticates again; replacing the session
+     * without freeing it leaks the old one, keys included. */
+    if(seos_reader->secure_messaging) {
+        secure_messaging_free(seos_reader->secure_messaging);
+    }
     seos_reader->secure_messaging = secure_messaging_alloc(&seos_reader->params);
     if(!seos_reader->secure_messaging) {
         FURI_LOG_W(TAG, "Could not start secure messaging");
