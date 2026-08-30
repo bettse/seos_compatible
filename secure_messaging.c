@@ -233,6 +233,7 @@ static bool unwrap_cryptogram(
 
 SecureMessaging* secure_messaging_alloc(AuthParameters* params) {
     SecureMessaging* secure_messaging = malloc(sizeof(SecureMessaging));
+    if(!secure_messaging) return NULL;
     memset(secure_messaging, 0, sizeof(SecureMessaging));
 
     secure_messaging->cipher = params->cipher;
@@ -311,6 +312,11 @@ SecureMessaging* secure_messaging_alloc(AuthParameters* params) {
 void secure_messaging_free(SecureMessaging* secure_messaging) {
     furi_assert(secure_messaging);
     secure_messaging_clear_pending(secure_messaging);
+
+    /* The session keys and both cipher contexts live in here. Cleared before
+     * the memory goes back, so they are not left for whatever allocates
+     * next. */
+    memset(secure_messaging, 0, sizeof(SecureMessaging));
     free(secure_messaging);
 }
 
