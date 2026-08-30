@@ -23,12 +23,14 @@ HOST_TEST_SUPPORT := \
 	$(HOST_TESTS)/bit_buffer_mock.c \
 	$(HOST_TESTS)/furi_hal_mock.c \
 	$(HOST_TESTS)/test_helpers.c \
+	$(HOST_TESTS)/allocation_counter.c \
 	$(HOST_TESTS)/furi_string_mock.c \
 	$(HOST_TESTS)/flipper_format_mock.c \
 	$(HOST_TESTS)/keys_stub.c
 
 HOST_TEST_SOURCES := \
 	$(HOST_TESTS)/test_main.c \
+	$(HOST_TESTS)/test_allocation.c \
 	$(HOST_TESTS)/test_credential_file.c \
 	$(HOST_TESTS)/test_tlv.c \
 	$(HOST_TESTS)/test_iso14443_4.c \

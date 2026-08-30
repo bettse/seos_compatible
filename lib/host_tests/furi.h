@@ -48,6 +48,19 @@ const char* furi_string_get_cstr(const FuriString* string);
 int furi_string_cmp_str(const FuriString* string, const char* str);
 bool furi_string_empty(const FuriString* string);
 
+/* Allocation counting, so a test can see how much churn a long exchange makes.
+ * Host only: the app sees plain malloc and free on the device. */
+void* seos_test_malloc(size_t size);
+void* seos_test_calloc(size_t count, size_t size);
+void seos_test_free(void* ptr);
+unsigned seos_test_allocation_count(void);
+size_t seos_test_allocation_live(void);
+void seos_test_allocation_reset(void);
+
+#define malloc(size)        seos_test_malloc(size)
+#define calloc(count, size) seos_test_calloc(count, size)
+#define free(ptr)           seos_test_free(ptr)
+
 #define furi_assert(expr) assert(expr)
 #define furi_check(expr)  assert(expr)
 #define furi_crash(msg)   abort()
