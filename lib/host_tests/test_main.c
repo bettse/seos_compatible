@@ -9,6 +9,7 @@ extern MunitSuite test_secure_messaging_suite;
 extern MunitSuite test_large_messages_suite;
 extern MunitSuite test_protocol_suite;
 extern MunitSuite test_reader_parse_suite;
+extern MunitSuite test_sio_collect_suite;
 extern MunitSuite test_sm_command_suite;
 extern MunitSuite test_write_response_suite;
 extern MunitSuite test_ble_policy_suite;
@@ -45,6 +46,11 @@ int main(int argc, char* argv[]) {
         {(char*)"/protocol", test_protocol_suite.tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
         {(char*)"/reader-parse",
          test_reader_parse_suite.tests,
+         NULL,
+         1,
+         MUNIT_SUITE_OPTION_NONE},
+        {(char*)"/sio-collect",
+         test_sio_collect_suite.tests,
          NULL,
          1,
          MUNIT_SUITE_OPTION_NONE},

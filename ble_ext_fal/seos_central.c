@@ -84,9 +84,9 @@ void seos_central_notify(void* context, const uint8_t* buffer, size_t buffer_len
     size_t oid_list_len = 0;
 
     if(seos_parse_select_aid(apdu, apdu_len, &aid, &aid_len)) {
-        if((aid_len == sizeof(standard_seos_aid) && memcmp(aid, standard_seos_aid, aid_len) == 0)) {
-            seos_emulator_select_aid(
-                response, aid, aid_len);
+        if((aid_len == sizeof(standard_seos_aid) &&
+            memcmp(aid, standard_seos_aid, aid_len) == 0)) {
+            seos_emulator_select_aid(response, aid, aid_len);
             bit_buffer_append_bytes(response, (uint8_t*)SEOS_SW_SUCCESS, sizeof(SEOS_SW_SUCCESS));
             seos_central->phase = SELECT_ADF;
         } else {

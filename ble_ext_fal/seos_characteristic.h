@@ -14,6 +14,7 @@
 #include "seos.h"
 #include "seos_att.h"
 #include "keys.h"
+#include "seos_sio_collect.h"
 
 typedef struct {
     Seos* seos;
@@ -28,6 +29,11 @@ typedef struct {
     AuthParameters params;
     SecureMessaging* secure_messaging;
     SeosCredential* credential;
+
+    /* A read answer longer than one frame arrives over several notifications,
+     * so where it has got to lives here rather than on a stack. */
+    SeosSioCollector collector;
+    BitBuffer* assembled;
 } SeosCharacteristic;
 
 SeosCharacteristic* seos_characteristic_alloc(Seos* seos);

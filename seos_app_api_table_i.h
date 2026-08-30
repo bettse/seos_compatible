@@ -3,6 +3,7 @@
 #include "keys.h"
 #include "seos_common.h"
 #include "seos_protocol.h"
+#include "seos_sio_collect.h"
 #include "seos_sm_command.h"
 #include "seos_sm_event_ui.h"
 #include "secure_messaging.h"
@@ -41,6 +42,18 @@ static constexpr auto app_api_table = sort(
             seos_reader_select_adf_response,
             bool,
             (BitBuffer*, size_t, SeosCredential*, AuthParameters*)),
+        API_METHOD(
+            seos_parse_sio_response,
+            bool,
+            (const uint8_t*, size_t, uint8_t*, size_t, size_t*)),
+        API_METHOD(
+            seos_sio_collect_begin,
+            void,
+            (SeosSioCollector*, BitBuffer*, const uint8_t*, size_t)),
+        API_METHOD(
+            seos_sio_collect_step,
+            SeosSioCollectResult,
+            (SeosSioCollector*, const uint8_t*, size_t, BitBuffer*)),
         API_METHOD(
             seos_parse_ga1_response,
             bool,

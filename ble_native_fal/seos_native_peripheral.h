@@ -6,6 +6,7 @@
 #include <bt/bt_service/bt.h>
 #include "seos_common.h"
 #include "seos_profile.h"
+#include "seos_sio_collect.h"
 
 typedef struct {
     Seos* seos;
@@ -21,6 +22,11 @@ typedef struct {
     SecureMessaging* secure_messaging;
     SeosCredential* credential;
     FlowMode flow_mode;
+
+    /* A read answer longer than one frame arrives over several writes, so
+     * where it has got to lives here rather than on a stack. */
+    SeosSioCollector collector;
+    BitBuffer* assembled;
 
     FuriMessageQueue* messages;
     FuriMutex* mq_mutex;

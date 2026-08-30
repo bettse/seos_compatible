@@ -17,7 +17,6 @@ static uint8_t OPERATION_SELECTOR_POST_RESET[] =
     {0xa0, 0x00, 0x00, 0x03, 0x82, 0x00, 0x31, 0x00, 0x01, 0x01};
 static uint8_t DESFIRE_ISO_AID[] = {0xd2, 0x76, 0x00, 0x00, 0x85, 0x01, 0x00};
 
-
 SeosEmulator* seos_emulator_alloc(SeosCredential* credential) {
     SeosEmulator* seos_emulator = malloc(sizeof(SeosEmulator));
     memset(seos_emulator, 0, sizeof(SeosEmulator));
@@ -96,7 +95,8 @@ NfcCommand seos_worker_listener_inspect_reader(Seos* seos) {
     size_t aid_len = 0;
 
     if(seos_parse_select_aid(apdu, apdu_len, &aid, &aid_len)) {
-        if((aid_len == sizeof(OPERATION_SELECTOR) && memcmp(aid, OPERATION_SELECTOR, aid_len) == 0)) {
+        if((aid_len == sizeof(OPERATION_SELECTOR) &&
+            memcmp(aid, OPERATION_SELECTOR, aid_len) == 0)) {
             FURI_LOG_I(TAG, "OPERATION_SELECTOR");
             uint8_t enableInspection[] = {
                 0x6f, 0x08, 0x85, 0x06, 0x02, 0x01, 0x40, 0x02, 0x01, 0x00};
@@ -143,34 +143,35 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
 
     if(seos_parse_select_aid(apdu, apdu_len, &aid, &aid_len)) {
         seos_emulator->credential->use_hardcoded = false;
-        if((aid_len == sizeof(standard_seos_aid) && memcmp(aid, standard_seos_aid, aid_len) == 0)) {
-            seos_emulator_select_aid(
-                seos_emulator->tx_buffer,
-                aid, aid_len);
+        if((aid_len == sizeof(standard_seos_aid) &&
+            memcmp(aid, standard_seos_aid, aid_len) == 0)) {
+            seos_emulator_select_aid(seos_emulator->tx_buffer, aid, aid_len);
             view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventAIDSelected);
         } else if(
-            (aid_len == sizeof(OPERATION_SELECTOR_POST_RESET) && memcmp(aid, OPERATION_SELECTOR_POST_RESET, aid_len) == 0)) {
+            (aid_len == sizeof(OPERATION_SELECTOR_POST_RESET) &&
+             memcmp(aid, OPERATION_SELECTOR_POST_RESET, aid_len) == 0)) {
             FURI_LOG_I(TAG, "OPERATION_SELECTOR_POST_RESET");
             bit_buffer_append_bytes(
                 seos_emulator->tx_buffer,
                 (uint8_t*)SEOS_SW_FILE_NOT_FOUND,
                 sizeof(SEOS_SW_FILE_NOT_FOUND));
         } else if(
-            (aid_len == sizeof(OPERATION_SELECTOR) && memcmp(aid, OPERATION_SELECTOR, aid_len) == 0)) {
+            (aid_len == sizeof(OPERATION_SELECTOR) &&
+             memcmp(aid, OPERATION_SELECTOR, aid_len) == 0)) {
             FURI_LOG_I(TAG, "OPERATION_SELECTOR");
             bit_buffer_append_bytes(
                 seos_emulator->tx_buffer,
                 (uint8_t*)SEOS_SW_FILE_NOT_FOUND,
                 sizeof(SEOS_SW_FILE_NOT_FOUND));
         } else if(
-            (aid_len == sizeof(MOBILE_SEOS_ADMIN_CARD) && memcmp(aid, MOBILE_SEOS_ADMIN_CARD, aid_len) == 0)) {
+            (aid_len == sizeof(MOBILE_SEOS_ADMIN_CARD) &&
+             memcmp(aid, MOBILE_SEOS_ADMIN_CARD, aid_len) == 0)) {
             FURI_LOG_I(TAG, "MOBILE_SEOS_ADMIN_CARD");
             bit_buffer_append_bytes(
                 seos_emulator->tx_buffer,
                 (uint8_t*)SEOS_SW_FILE_NOT_FOUND,
                 sizeof(SEOS_SW_FILE_NOT_FOUND));
-        } else if(
-            (aid_len == sizeof(DESFIRE_ISO_AID) && memcmp(aid, DESFIRE_ISO_AID, aid_len) == 0)) {
+        } else if((aid_len == sizeof(DESFIRE_ISO_AID) && memcmp(aid, DESFIRE_ISO_AID, aid_len) == 0)) {
             FURI_LOG_I(TAG, "DESFIRE_ISO_AID");
             bit_buffer_append_bytes(
                 seos_emulator->tx_buffer,

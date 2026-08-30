@@ -38,6 +38,7 @@ HOST_TEST_SOURCES := \
 	$(HOST_TESTS)/test_large_messages.c \
 	$(HOST_TESTS)/test_protocol.c \
 	$(HOST_TESTS)/test_reader_parse.c \
+	$(HOST_TESTS)/test_sio_collect.c \
 	$(HOST_TESTS)/test_sm_command.c \
 	$(HOST_TESTS)/test_write_response.c \
 	$(HOST_TESTS)/test_ble_policy.c \
@@ -48,6 +49,7 @@ HOST_TEST_SOURCES := \
 
 HOST_TEST_APP_SOURCES := \
 	seos_tlv.c \
+	seos_sio_collect.c \
 	seos_credential_parse.c \
 	seos_iso14443_4.c \
 	cmac.c \

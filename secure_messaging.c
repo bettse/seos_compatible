@@ -194,8 +194,7 @@ static bool unwrap_cryptogram(
     size_t clear_cap,
     size_t* clear_len_out) {
     SeosTlvObject cryptogram;
-    if(!seos_tlv_read_at(data, data_len, offset, &cryptogram) ||
-       cryptogram.tag != DO_CRYPTOGRAM) {
+    if(!seos_tlv_read_at(data, data_len, offset, &cryptogram) || cryptogram.tag != DO_CRYPTOGRAM) {
         FURI_LOG_W(TAG, "No cryptogram to unwrap");
         return false;
     }

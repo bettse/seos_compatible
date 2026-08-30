@@ -105,11 +105,7 @@ bool seos_emulator_general_authenticate_2(
 bool seos_response_status(const uint8_t* data, size_t len, uint16_t* status_word);
 
 /* The card's challenge, from the answer to the first authenticate command. */
-bool seos_parse_ga1_response(
-    const uint8_t* data,
-    size_t len,
-    uint8_t* rnd_icc,
-    size_t rnd_icc_len);
+bool seos_parse_ga1_response(const uint8_t* data, size_t len, uint8_t* rnd_icc, size_t rnd_icc_len);
 
 /* The card's cryptogram, from the answer to the second. `cryptogram` points
  * into `data`, and its length is reported rather than assumed: the caller

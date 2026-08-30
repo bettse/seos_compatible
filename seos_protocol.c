@@ -517,7 +517,7 @@ bool seos_reader_verify_cryptogram(AuthParameters* params, const uint8_t* crypto
     return true;
 }
 /* Data objects the authenticate answers are built from. */
-#define DO_DYNAMIC_AUTH  0x7c
+#define DO_DYNAMIC_AUTH   0x7c
 #define DO_CARD_CHALLENGE 0x81
 #define DO_CARD_RESPONSE  0x82
 
@@ -606,11 +606,7 @@ static bool read_authenticate_object(
     return true;
 }
 
-bool seos_parse_ga1_response(
-    const uint8_t* data,
-    size_t len,
-    uint8_t* rnd_icc,
-    size_t rnd_icc_len) {
+bool seos_parse_ga1_response(const uint8_t* data, size_t len, uint8_t* rnd_icc, size_t rnd_icc_len) {
     const uint8_t* value = NULL;
     size_t value_len = 0;
     if(!read_authenticate_object(data, len, DO_CARD_CHALLENGE, &value, &value_len)) return false;

@@ -13,7 +13,6 @@ static uint8_t ga1_response[] = {0x7c, 0x0a, 0x81, 0x08};
 
 // Emulation
 
-
 SeosCharacteristic* seos_characteristic_alloc(Seos* seos) {
     SeosCharacteristic* seos_characteristic = malloc(sizeof(SeosCharacteristic));
     memset(seos_characteristic, 0, sizeof(SeosCharacteristic));
@@ -37,6 +36,7 @@ SeosCharacteristic* seos_characteristic_alloc(Seos* seos) {
     seos_att_set_write_request_callback(
         seos_characteristic->seos_att, seos_characteristic_write_request, seos_characteristic);
 
+    seos_characteristic->assembled = bit_buffer_alloc(SEOS_SM_RESPONSE_MAX);
     seos_characteristic->rx_buffer = bit_buffer_alloc(128); // TODO: MTU
 
     return seos_characteristic;
@@ -46,6 +46,7 @@ void seos_characteristic_free(SeosCharacteristic* seos_characteristic) {
     furi_assert(seos_characteristic);
     seos_att_free(seos_characteristic->seos_att);
     bit_buffer_free(seos_characteristic->rx_buffer);
+    bit_buffer_free(seos_characteristic->assembled);
 
     if(seos_characteristic->secure_messaging) {
         secure_messaging_free(seos_characteristic->secure_messaging);
@@ -81,7 +82,8 @@ void seos_characteristic_stop(SeosCharacteristic* seos_characteristic) {
  * run the length backwards past zero. */
 #define BLE_FRAMING_LEN 1
 
-static bool ble_apdu_bounds(const BitBuffer* attribute_value, const uint8_t** apdu, size_t* apdu_len) {
+static bool
+    ble_apdu_bounds(const BitBuffer* attribute_value, const uint8_t** apdu, size_t* apdu_len) {
     size_t len = bit_buffer_get_size_bytes(attribute_value);
     if(len <= BLE_FRAMING_LEN) return false;
 
@@ -132,13 +134,13 @@ void seos_characteristic_reader_flow(
             seos_characteristic->phase = GENERAL_AUTHENTICATION_1;
         }
     } else if(
-        rx_len >= sizeof(ga1_response) && memcmp(rx_data, ga1_response, sizeof(ga1_response)) == 0 &&
+        rx_len >= sizeof(ga1_response) &&
+        memcmp(rx_data, ga1_response, sizeof(ga1_response)) == 0 &&
         seos_parse_ga1_response(
             rx_data,
             rx_len,
             seos_characteristic->params.rndICC,
             sizeof(seos_characteristic->params.rndICC))) {
-
         // Craft response
         uint8_t cryptogram[32 + 8];
         memset(cryptogram, 0, sizeof(cryptogram));
@@ -195,40 +197,49 @@ void seos_characteristic_reader_flow(
             (uint8_t*)SEOS_SM_HEADER,
             sizeof(SEOS_SM_HEADER),
             payload);
+        seos_sio_collect_begin(
+            &seos_characteristic->collector,
+            seos_characteristic->assembled,
+            bit_buffer_get_data(payload),
+            bit_buffer_get_size_bytes(payload));
         seos_characteristic->phase = REQUEST_SIO;
         view_dispatcher_send_custom_event(
             seos_characteristic->seos->view_dispatcher, SeosCustomEventSIORequested);
     } else if(seos_characteristic->phase == REQUEST_SIO) {
         SecureMessaging* secure_messaging = seos_characteristic->secure_messaging;
 
-        BitBuffer* rx_buffer = bit_buffer_alloc(rx_len);
-        bit_buffer_append_bytes(rx_buffer, rx_data, rx_len);
+        /* The answer may arrive in pieces, each asking to be continued. They
+         * are one protected message, so nothing is unwrapped until the last. */
+        SeosSioCollectResult collected =
+            seos_sio_collect_step(&seos_characteristic->collector, rx_data, rx_len, payload);
+        if(collected == SeosSioCollectSend) return;
+        if(collected == SeosSioCollectFailed) {
+            FURI_LOG_W(TAG, "Could not collect the read answer");
+            return;
+        }
+
+        BitBuffer* rx_buffer = seos_characteristic->assembled;
         seos_log_bitbuffer(TAG, "BLE response(wrapped)", rx_buffer);
         if(!secure_messaging_unwrap_rapdu(secure_messaging, rx_buffer)) {
             FURI_LOG_W(TAG, "Could not unwrap SIO response");
-            bit_buffer_free(rx_buffer);
             return;
         }
         seos_log_bitbuffer(TAG, "BLE response(clear)", rx_buffer);
 
-        // fileId(2) then the length byte
-        if(bit_buffer_get_size_bytes(rx_buffer) < 3) {
-            FURI_LOG_W(TAG, "SIO response too short");
-            bit_buffer_free(rx_buffer);
-            return;
-        }
-        seos_characteristic->credential->sio_len = bit_buffer_get_byte(rx_buffer, 2);
-        if(seos_characteristic->credential->sio_len >
-               sizeof(seos_characteristic->credential->sio) ||
-           bit_buffer_get_size_bytes(rx_buffer) < 3 + seos_characteristic->credential->sio_len) {
-            FURI_LOG_W(TAG, "SIO length does not fit the response");
-            bit_buffer_free(rx_buffer);
-            return;
-        }
         SeosCredential* credential = seos_characteristic->credential;
         AuthParameters* params = &seos_characteristic->params;
 
-        memcpy(credential->sio, bit_buffer_get_data(rx_buffer) + 3, credential->sio_len);
+        size_t sio_len = 0;
+        if(!seos_parse_sio_response(
+               bit_buffer_get_data(rx_buffer),
+               bit_buffer_get_size_bytes(rx_buffer),
+               credential->sio,
+               sizeof(credential->sio),
+               &sio_len)) {
+            FURI_LOG_W(TAG, "No credential in the read answer");
+            return;
+        }
+        credential->sio_len = sio_len;
 
         /* The keys the session was built from, and the OID it was selected
          * by, are what let the credential be emulated later. The NFC reader
@@ -243,7 +254,6 @@ void seos_characteristic_reader_flow(
 
         Seos* seos = seos_characteristic->seos;
         view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventPollerSuccess);
-        bit_buffer_free(rx_buffer);
 
         seos_characteristic->phase = SELECT_AID;
     } else if(rx_data[0] == 0xe1) {
@@ -270,9 +280,9 @@ void seos_characteristic_cred_flow(
     size_t oid_list_len = 0;
 
     if(seos_parse_select_aid(apdu, apdu_len, &aid, &aid_len)) {
-        if((aid_len == sizeof(standard_seos_aid) && memcmp(aid, standard_seos_aid, aid_len) == 0)) {
-            seos_emulator_select_aid(
-                payload, aid, aid_len);
+        if((aid_len == sizeof(standard_seos_aid) &&
+            memcmp(aid, standard_seos_aid, aid_len) == 0)) {
+            seos_emulator_select_aid(payload, aid, aid_len);
             bit_buffer_append_bytes(payload, (uint8_t*)SEOS_SW_SUCCESS, sizeof(SEOS_SW_SUCCESS));
         } else {
             bit_buffer_append_bytes(
@@ -317,7 +327,8 @@ void seos_characteristic_cred_flow(
             if(seos_characteristic->secure_messaging) {
                 secure_messaging_free(seos_characteristic->secure_messaging);
             }
-            seos_characteristic->secure_messaging = secure_messaging_alloc(&seos_characteristic->params);
+            seos_characteristic->secure_messaging =
+                secure_messaging_alloc(&seos_characteristic->params);
         }
     } else if(memcmp(apdu, SEOS_GET_RESPONSE, sizeof(SEOS_GET_RESPONSE) - 1) == 0) {
         if(seos_characteristic->secure_messaging) {

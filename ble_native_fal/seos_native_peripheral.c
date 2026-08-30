@@ -14,7 +14,6 @@ static uint8_t ga1_response[] = {0x7c, 0x0a, 0x81, 0x08};
 
 // Emulation
 
-
 int32_t seos_native_peripheral_task(void* context);
 
 typedef struct {
@@ -94,6 +93,7 @@ SeosNativePeripheral* seos_native_peripheral_alloc(Seos* seos) {
         furi_message_queue_alloc(MESSAGE_QUEUE_SIZE, sizeof(NativePeripheralMessage));
     seos_native_peripheral->mq_mutex = furi_mutex_alloc(FuriMutexTypeNormal);
 
+    seos_native_peripheral->assembled = bit_buffer_alloc(SEOS_SM_RESPONSE_MAX);
     seos_native_peripheral->rx_buffer = bit_buffer_alloc(128); // TODO: MTU
 
     return seos_native_peripheral;
@@ -109,6 +109,7 @@ void seos_native_peripheral_free(SeosNativePeripheral* seos_native_peripheral) {
     furi_thread_free(seos_native_peripheral->thread);
 
     bit_buffer_free(seos_native_peripheral->rx_buffer);
+    bit_buffer_free(seos_native_peripheral->assembled);
 
     if(seos_native_peripheral->secure_messaging) {
         secure_messaging_free(seos_native_peripheral->secure_messaging);
@@ -199,9 +200,9 @@ void seos_native_peripheral_process_message_cred(
     size_t oid_list_len = 0;
 
     if(seos_parse_select_aid(apdu, apdu_len, &aid, &aid_len)) {
-        if((aid_len == sizeof(standard_seos_aid) && memcmp(aid, standard_seos_aid, aid_len) == 0)) {
-            seos_emulator_select_aid(
-                response, aid, aid_len);
+        if((aid_len == sizeof(standard_seos_aid) &&
+            memcmp(aid, standard_seos_aid, aid_len) == 0)) {
+            seos_emulator_select_aid(response, aid, aid_len);
             bit_buffer_append_bytes(response, (uint8_t*)SEOS_SW_SUCCESS, sizeof(SEOS_SW_SUCCESS));
         } else {
             bit_buffer_append_bytes(
@@ -247,7 +248,8 @@ void seos_native_peripheral_process_message_cred(
             if(seos_native_peripheral->secure_messaging) {
                 secure_messaging_free(seos_native_peripheral->secure_messaging);
             }
-            seos_native_peripheral->secure_messaging = secure_messaging_alloc(&seos_native_peripheral->params);
+            seos_native_peripheral->secure_messaging =
+                secure_messaging_alloc(&seos_native_peripheral->params);
         }
     } else if(memcmp(apdu, SEOS_GET_RESPONSE, sizeof(SEOS_GET_RESPONSE) - 1) == 0) {
         if(seos_native_peripheral->secure_messaging) {
@@ -326,8 +328,7 @@ void seos_native_peripheral_process_message_reader(
         bit_buffer_append_byte(response, 0x00);
         seos_native_peripheral->phase = SELECT_ADF;
     } else if(
-        seos_native_peripheral->phase == SELECT_ADF &&
-        rx_len >= sizeof(SEOS_SW_FILE_NOT_FOUND) &&
+        seos_native_peripheral->phase == SELECT_ADF && rx_len >= sizeof(SEOS_SW_FILE_NOT_FOUND) &&
         memcmp(rx_data, SEOS_SW_FILE_NOT_FOUND, sizeof(SEOS_SW_FILE_NOT_FOUND)) == 0) {
         // Our ADF OID was rejected, close the connection
         FURI_LOG_W(TAG, "Failed to match ADF OID");
@@ -354,13 +355,13 @@ void seos_native_peripheral_process_message_reader(
         }
         bit_buffer_free(attribute_value);
     } else if(
-        rx_len >= sizeof(ga1_response) && memcmp(rx_data, ga1_response, sizeof(ga1_response)) == 0 &&
+        rx_len >= sizeof(ga1_response) &&
+        memcmp(rx_data, ga1_response, sizeof(ga1_response)) == 0 &&
         seos_parse_ga1_response(
             rx_data,
             rx_len,
             seos_native_peripheral->params.rndICC,
             sizeof(seos_native_peripheral->params.rndICC))) {
-
         // Craft response
         uint8_t cryptogram[32 + 8];
         memset(cryptogram, 0, sizeof(cryptogram));
@@ -421,59 +422,66 @@ void seos_native_peripheral_process_message_reader(
             (uint8_t*)SEOS_SM_HEADER,
             sizeof(SEOS_SM_HEADER),
             response);
+        seos_sio_collect_begin(
+            &seos_native_peripheral->collector,
+            seos_native_peripheral->assembled,
+            bit_buffer_get_data(response),
+            bit_buffer_get_size_bytes(response));
         seos_native_peripheral->phase = REQUEST_SIO;
         view_dispatcher_send_custom_event(
             seos_native_peripheral->seos->view_dispatcher, SeosCustomEventSIORequested);
     } else if(seos_native_peripheral->phase == REQUEST_SIO) {
-        // TODO: consider seos_reader_request_sio
         SecureMessaging* secure_messaging = seos_native_peripheral->secure_messaging;
         SeosCredential* credential = seos_native_peripheral->credential;
         AuthParameters* params = &seos_native_peripheral->params;
 
-        if(rx_len < 2) {
-            FURI_LOG_W(TAG, "Response carries no wrapped message");
-            bit_buffer_free(response);
-            return;
-        }
-        BitBuffer* rx_buffer = bit_buffer_alloc(rx_len - 1);
-        bit_buffer_append_bytes(rx_buffer, rx_data, rx_len - 1);
-        seos_log_bitbuffer(TAG, "BLE response(wrapped)", rx_buffer);
-        if(!secure_messaging_unwrap_rapdu(secure_messaging, rx_buffer)) {
-            FURI_LOG_W(TAG, "Could not unwrap SIO response");
-            bit_buffer_free(rx_buffer);
-            bit_buffer_free(response);
-            return;
-        }
-        seos_log_bitbuffer(TAG, "BLE response(clear)", rx_buffer);
+        /* The answer may arrive in pieces, each asking to be continued. They
+         * are one protected message, so nothing is unwrapped until the last.
+         * The collector takes the status word off each piece; this used to
+         * drop a single trailing byte, which is not the status word. */
+        SeosSioCollectResult collected =
+            seos_sio_collect_step(&seos_native_peripheral->collector, rx_data, rx_len, response);
+        if(collected != SeosSioCollectComplete) {
+            /* Still collecting: whatever the step put in `response` is sent by
+             * the tail of this function, as any other answer would be. */
+            if(collected == SeosSioCollectFailed) {
+                FURI_LOG_W(TAG, "Could not collect the read answer");
+                bit_buffer_reset(response);
+            }
+        } else {
+            BitBuffer* rx_buffer = seos_native_peripheral->assembled;
+            seos_log_bitbuffer(TAG, "BLE response(wrapped)", rx_buffer);
+            if(!secure_messaging_unwrap_rapdu(secure_messaging, rx_buffer)) {
+                FURI_LOG_W(TAG, "Could not unwrap SIO response");
+                bit_buffer_free(response);
+                return;
+            }
+            seos_log_bitbuffer(TAG, "BLE response(clear)", rx_buffer);
 
-        // fileId(2) then the length byte
-        if(bit_buffer_get_size_bytes(rx_buffer) < 3) {
-            FURI_LOG_W(TAG, "SIO response too short");
-            bit_buffer_free(rx_buffer);
-            bit_buffer_free(response);
-            return;
+            size_t sio_len = 0;
+            if(!seos_parse_sio_response(
+                   bit_buffer_get_data(rx_buffer),
+                   bit_buffer_get_size_bytes(rx_buffer),
+                   credential->sio,
+                   sizeof(credential->sio),
+                   &sio_len)) {
+                FURI_LOG_W(TAG, "No credential in the read answer");
+                bit_buffer_free(response);
+                return;
+            }
+            credential->sio_len = sio_len;
+            memcpy(credential->priv_key, params->priv_key, sizeof(credential->priv_key));
+            memcpy(credential->auth_key, params->auth_key, sizeof(credential->auth_key));
+            credential->adf_oid_len = SEOS_ADF_OID_LEN;
+            memcpy(credential->adf_oid, SEOS_ADF_OID, sizeof(credential->adf_oid));
+
+            FURI_LOG_I(TAG, "SIO Captured, %d bytes", credential->sio_len);
+
+            Seos* seos = seos_native_peripheral->seos;
+            view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventPollerSuccess);
+
+            seos_native_peripheral->phase = SELECT_AID;
         }
-        credential->sio_len = bit_buffer_get_byte(rx_buffer, 2);
-        if(credential->sio_len > sizeof(credential->sio) ||
-           bit_buffer_get_size_bytes(rx_buffer) < 3 + credential->sio_len) {
-            FURI_LOG_W(TAG, "SIO length does not fit the response");
-            bit_buffer_free(rx_buffer);
-            bit_buffer_free(response);
-            return;
-        }
-        memcpy(credential->sio, bit_buffer_get_data(rx_buffer) + 3, credential->sio_len);
-        memcpy(credential->priv_key, params->priv_key, sizeof(credential->priv_key));
-        memcpy(credential->auth_key, params->auth_key, sizeof(credential->auth_key));
-        credential->adf_oid_len = SEOS_ADF_OID_LEN;
-        memcpy(credential->adf_oid, SEOS_ADF_OID, sizeof(credential->adf_oid));
-
-        FURI_LOG_I(TAG, "SIO Captured, %d bytes", credential->sio_len);
-
-        Seos* seos = seos_native_peripheral->seos;
-        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventPollerSuccess);
-        bit_buffer_free(rx_buffer);
-
-        seos_native_peripheral->phase = SELECT_AID;
 
     } else {
         FURI_LOG_W(TAG, "No match for write request");
