@@ -38,8 +38,8 @@ const uint8_t SEOS_GET_RESPONSE[SEOS_GET_RESPONSE_LEN] = {0x00, 0xc0, 0x00, 0x00
 /* Tag of the file holding the SIO. */
 #define SIO_FILE_TAG 0xff00
 
-/* Data field forms. Only a tag list is supported; an extended header list is
- * refused rather than answered wrongly. */
+/* Data field forms. A tag list is bare tags and names exactly one object; an
+ * extended header list is tag and length pairs and may name several. */
 #define DO_TAG_LIST             0x5c
 #define DO_EXTENDED_HEADER_LIST 0x4d
 
@@ -85,6 +85,7 @@ static void send_response(
 void seos_sm_command_get_response(
     SecureMessaging* secure_messaging,
     size_t max_frame_len,
+    uint8_t le,
     BitBuffer* tx) {
     furi_assert(secure_messaging);
 
@@ -97,6 +98,11 @@ void seos_sm_command_get_response(
     size_t room = max_frame_len > 2 ? max_frame_len - 2 : 0;
     uint8_t chunk[SEOS_SM_RESPONSE_MAX];
     if(room > sizeof(chunk)) room = sizeof(chunk);
+
+    /* The reader asked for this much and the data field must not exceed it.
+     * A zero asks for the largest a single byte can describe. */
+    size_t asked = le == 0 ? 256 : le;
+    if(room > asked) room = asked;
 
     size_t remaining = 0;
     size_t taken = secure_messaging_take_pending(secure_messaging, chunk, room, &remaining);
@@ -140,11 +146,24 @@ static bool parse_requested_tags(
     size_t body_len = data[1];
     if(body_len == 0 || data_len != 2 + body_len) return false;
 
+    size_t end = 2 + body_len;
     size_t offset = 2;
     *tag_count = 0;
-    while(offset < 2 + body_len) {
+
+    while(offset < end) {
         if(*tag_count == tags_capacity) return false;
-        if(!seos_tlv_read_tag(data, 2 + body_len, &offset, &tags[*tag_count])) return false;
+        if(!seos_tlv_read_tag(data, end, &offset, &tags[*tag_count])) return false;
+
+        if(data[0] == DO_EXTENDED_HEADER_LIST) {
+            /* Each header is a tag and the length wanted of it. A length of
+             * zero asks for the whole object, which is all this serves, so a
+             * request for part of one is refused rather than answered with
+             * more than was asked for. */
+            if(offset >= end) return false;
+            if(data[offset] != 0x00) return false;
+            offset++;
+        }
+
         (*tag_count)++;
     }
 

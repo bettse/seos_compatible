@@ -87,12 +87,19 @@ void secure_messaging_increment_context(SecureMessaging* secure_messaging);
  * and return true. They return false, leaving the buffer untouched, if the
  * message is malformed or the padding is wrong -- a caller must check before
  * reading what it thinks is plaintext. */
+/* `expects_response` says whether the plain command carried an Le.
+ *
+ * A command that expects data back carries a protected Le object and covers it
+ * with the checksum; one that does not, does neither. A card that follows the
+ * standard builds its checksum over the objects it received, so sending the
+ * object where it does not belong makes the two disagree. */
 bool secure_messaging_wrap_apdu(
     SecureMessaging* secure_messaging,
     uint8_t* message,
     size_t message_len,
     uint8_t* apdu_header,
     size_t apdu_header_len,
+    bool expects_response,
     BitBuffer* tx_buffer);
 
 bool secure_messaging_unwrap_apdu(SecureMessaging* secure_messaging, BitBuffer* rx_buffer);

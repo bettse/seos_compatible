@@ -66,11 +66,15 @@ bool seos_sm_command_handle(
 
 /* Hands out the next piece of a response that did not fit one frame.
  *
+ * `le` is the length the reader asked for, with zero meaning 256. The answer
+ * is at most that much, and at most what the frame holds.
+ *
  * Answers 6a86 if nothing is pending, since the reader asked for a
  * continuation that does not exist. */
 void seos_sm_command_get_response(
     SecureMessaging* secure_messaging,
     size_t max_frame_len,
+    uint8_t le,
     BitBuffer* tx);
 
 /* What to do with the status word a card just answered with.

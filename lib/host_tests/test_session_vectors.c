@@ -105,7 +105,7 @@ static void run_session(const SessionVector* v) {
 
     BitBuffer* tx = bit_buffer_alloc(BUFFER_CAPACITY);
     munit_assert_true(secure_messaging_wrap_apdu(
-        sm, command, command_len, (uint8_t*)SEOS_SM_HEADER, sizeof(SEOS_SM_HEADER), tx));
+        sm, command, command_len, (uint8_t*)SEOS_SM_HEADER, sizeof(SEOS_SM_HEADER), true, tx));
 
     uint8_t cryptogram[32];
     size_t cryptogram_len = hex_to_bytes(v->cryptogram, cryptogram, sizeof(cryptogram));

@@ -54,6 +54,7 @@ bool seos_reader_request_sio(SeosReader* seos_reader) {
         sizeof(message),
         (uint8_t*)SEOS_SM_HEADER,
         sizeof(SEOS_SM_HEADER),
+        true,
         tx_buffer);
 
     seos_log_bitbuffer(TAG, "NFC transmit", tx_buffer);
@@ -142,6 +143,7 @@ bool seos_reader_write_sio(SeosReader* seos_reader) {
         message_len,
         (uint8_t*)SEOS_SM_PUT_HEADER,
         sizeof(SEOS_SM_PUT_HEADER),
+        false,
         tx_buffer);
 
     seos_log_bitbuffer(TAG, "NFC transmit(wrapped)", tx_buffer);

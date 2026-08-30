@@ -72,7 +72,7 @@ static constexpr auto app_api_table = sort(
         API_METHOD(
             secure_messaging_wrap_apdu,
             bool,
-            (SecureMessaging*, uint8_t*, size_t, uint8_t*, size_t, BitBuffer*)),
+            (SecureMessaging*, uint8_t*, size_t, uint8_t*, size_t, bool, BitBuffer*)),
         API_METHOD(secure_messaging_unwrap_rapdu, bool, (SecureMessaging*, BitBuffer*)),
         API_METHOD(
             seos_sm_command_handle,
@@ -85,7 +85,10 @@ static constexpr auto app_api_table = sort(
              BitBuffer*,
              SeosSmEventCallback,
              void*)),
-        API_METHOD(seos_sm_command_get_response, void, (SecureMessaging*, size_t, BitBuffer*)),
+        API_METHOD(
+            seos_sm_command_get_response,
+            void,
+            (SecureMessaging*, size_t, uint8_t, BitBuffer*)),
         API_METHOD(seos_sm_command_matches, bool, (const uint8_t*, size_t)),
         API_METHOD(seos_sm_append_status, void, (BitBuffer*, uint16_t)),
         API_METHOD(seos_sm_event_to_view_dispatcher, void, (void*, SeosSmEvent)),

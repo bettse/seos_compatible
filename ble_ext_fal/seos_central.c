@@ -122,10 +122,15 @@ void seos_central_notify(void* context, const uint8_t* buffer, size_t buffer_len
             bit_buffer_reset(response);
         }
         seos_central->phase = REQUEST_SIO;
-    } else if(memcmp(apdu, SEOS_GET_RESPONSE, sizeof(SEOS_GET_RESPONSE) - 1) == 0) {
+    } else if(
+        apdu_len >= SEOS_GET_RESPONSE_LEN &&
+        memcmp(apdu, SEOS_GET_RESPONSE, SEOS_GET_RESPONSE_LEN - 1) == 0) {
         if(seos_central->secure_messaging) {
             seos_sm_command_get_response(
-                seos_central->secure_messaging, SEOS_SM_MAX_FRAME, response);
+                seos_central->secure_messaging,
+                SEOS_SM_MAX_FRAME,
+                apdu[SEOS_GET_RESPONSE_LEN - 1],
+                response);
         } else {
             seos_sm_append_status(response, SECURE_MESSAGING_SW_INCORRECT_DO);
         }

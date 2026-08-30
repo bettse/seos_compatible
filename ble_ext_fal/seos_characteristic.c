@@ -196,6 +196,7 @@ void seos_characteristic_reader_flow(
             sizeof(message),
             (uint8_t*)SEOS_SM_HEADER,
             sizeof(SEOS_SM_HEADER),
+            true,
             payload);
         seos_sio_collect_begin(
             &seos_characteristic->collector,
@@ -330,10 +331,15 @@ void seos_characteristic_cred_flow(
             seos_characteristic->secure_messaging =
                 secure_messaging_alloc(&seos_characteristic->params);
         }
-    } else if(memcmp(apdu, SEOS_GET_RESPONSE, sizeof(SEOS_GET_RESPONSE) - 1) == 0) {
+    } else if(
+        apdu_len >= SEOS_GET_RESPONSE_LEN &&
+        memcmp(apdu, SEOS_GET_RESPONSE, SEOS_GET_RESPONSE_LEN - 1) == 0) {
         if(seos_characteristic->secure_messaging) {
             seos_sm_command_get_response(
-                seos_characteristic->secure_messaging, SEOS_SM_MAX_FRAME, payload);
+                seos_characteristic->secure_messaging,
+                SEOS_SM_MAX_FRAME,
+                apdu[SEOS_GET_RESPONSE_LEN - 1],
+                payload);
         } else {
             seos_sm_append_status(payload, SECURE_MESSAGING_SW_INCORRECT_DO);
         }

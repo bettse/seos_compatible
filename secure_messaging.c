@@ -382,17 +382,19 @@ bool secure_messaging_wrap_apdu(
     size_t message_len,
     uint8_t* apdu_header,
     size_t apdu_header_len,
+    bool expects_response,
     BitBuffer* tx_buffer) {
     uint8_t cipher = secure_messaging->cipher;
     size_t block_size = seos_cipher_block_size(cipher);
     if(block_size == 0) return false;
 
     uint8_t protected_le[] = {DO_LE, 0x00};
+    size_t protected_le_len = expects_response ? sizeof(protected_le) : 0;
     uint8_t checksum_prefix[] = {DO_CHECKSUM, SEOS_WORKER_CMAC_SIZE};
     uint8_t Le[] = {0x00};
 
     size_t clear_cap = padded_size(message_len, block_size);
-    size_t objects_cap = SEOS_TLV_HEADER_MAX + clear_cap + sizeof(protected_le);
+    size_t objects_cap = SEOS_TLV_HEADER_MAX + clear_cap + protected_le_len;
 
     /* The command states its own length in one byte, so the objects and the
      * checksum after them have to fit in that. A message past this needs the
@@ -426,8 +428,10 @@ bool secure_messaging_wrap_apdu(
         size_t objects_len = seos_tlv_write_header(objects, DO_CRYPTOGRAM, clear_len);
         memcpy(objects + objects_len, encrypted, clear_len);
         objects_len += clear_len;
-        memcpy(objects + objects_len, protected_le, sizeof(protected_le));
-        objects_len += sizeof(protected_le);
+        if(protected_le_len > 0) {
+            memcpy(objects + objects_len, protected_le, protected_le_len);
+            objects_len += protected_le_len;
+        }
 
         uint8_t cmac[16];
         if(!checksum_objects(

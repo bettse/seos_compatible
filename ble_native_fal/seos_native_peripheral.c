@@ -251,10 +251,15 @@ void seos_native_peripheral_process_message_cred(
             seos_native_peripheral->secure_messaging =
                 secure_messaging_alloc(&seos_native_peripheral->params);
         }
-    } else if(memcmp(apdu, SEOS_GET_RESPONSE, sizeof(SEOS_GET_RESPONSE) - 1) == 0) {
+    } else if(
+        apdu_len >= SEOS_GET_RESPONSE_LEN &&
+        memcmp(apdu, SEOS_GET_RESPONSE, SEOS_GET_RESPONSE_LEN - 1) == 0) {
         if(seos_native_peripheral->secure_messaging) {
             seos_sm_command_get_response(
-                seos_native_peripheral->secure_messaging, SEOS_SM_MAX_FRAME, response);
+                seos_native_peripheral->secure_messaging,
+                SEOS_SM_MAX_FRAME,
+                apdu[SEOS_GET_RESPONSE_LEN - 1],
+                response);
         } else {
             seos_sm_append_status(response, SECURE_MESSAGING_SW_INCORRECT_DO);
         }
@@ -421,6 +426,7 @@ void seos_native_peripheral_process_message_reader(
             sizeof(message),
             (uint8_t*)SEOS_SM_HEADER,
             sizeof(SEOS_SM_HEADER),
+            true,
             response);
         seos_sio_collect_begin(
             &seos_native_peripheral->collector,

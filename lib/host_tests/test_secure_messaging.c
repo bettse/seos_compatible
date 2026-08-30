@@ -48,8 +48,8 @@ static void round_trip_command(uint8_t cipher, uint8_t hash, size_t message_len)
         message[i] = (uint8_t)(i * 7 + 1);
 
     BitBuffer* buffer = bit_buffer_alloc(RX_CAPACITY);
-    munit_assert_true(
-        secure_messaging_wrap_apdu(sender, message, message_len, header, sizeof(header), buffer));
+    munit_assert_true(secure_messaging_wrap_apdu(
+        sender, message, message_len, header, sizeof(header), true, buffer));
 
     /* The transmitted APDU carries a trailing Le the receiver does not see as
      * part of the body, but unwrap must tolerate it. */
@@ -182,11 +182,64 @@ static MunitResult test_rejects_oversized_message(const MunitParameter p[], void
         sizeof(message),
         (uint8_t*)SEOS_SM_HEADER,
         sizeof(SEOS_SM_HEADER),
+        true,
         buffer));
     munit_assert_size(bit_buffer_get_size_bytes(buffer), ==, 0);
 
     bit_buffer_free(buffer);
     secure_messaging_free(sm);
+    return MUNIT_OK;
+}
+
+/* A command that expects nothing back carries no protected Le object, and its
+ * checksum does not cover one. A command that does, carries it and covers it.
+ * Both ends of our own wrap agree either way, so the difference has to be
+ * pinned against the bytes rather than against a round trip. */
+static MunitResult test_protected_le_follows_the_case(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    uint8_t message[] = {0xff, 0x00, 0x04, 0x11, 0x22, 0x33, 0x44};
+    uint8_t header[] = {0x0c, 0xcb, 0x3f, 0xff};
+
+    /* Expecting a response. */
+    SecureMessaging* with_le = session(AES_128_CBC, SHA256);
+    BitBuffer* wanted = bit_buffer_alloc(RX_CAPACITY);
+    munit_assert_true(secure_messaging_wrap_apdu(
+        with_le, message, sizeof(message), header, sizeof(header), true, wanted));
+
+    /* Expecting none. */
+    SecureMessaging* without_le = session(AES_128_CBC, SHA256);
+    BitBuffer* bare = bit_buffer_alloc(RX_CAPACITY);
+    munit_assert_true(secure_messaging_wrap_apdu(
+        without_le, message, sizeof(message), header, sizeof(header), false, bare));
+
+    /* The protected Le is two bytes, so the one that carries it is longer. */
+    munit_assert_size(bit_buffer_get_size_bytes(wanted), ==, bit_buffer_get_size_bytes(bare) + 2);
+
+    /* It is there in one and absent from the other. */
+    const uint8_t protected_le[] = {0x97, 0x00};
+    munit_assert_not_null(memmem(
+        bit_buffer_get_data(wanted),
+        bit_buffer_get_size_bytes(wanted),
+        protected_le,
+        sizeof(protected_le)));
+    munit_assert_null(memmem(
+        bit_buffer_get_data(bare),
+        bit_buffer_get_size_bytes(bare),
+        protected_le,
+        sizeof(protected_le)));
+
+    /* And the checksums differ, so the scope followed the object rather than
+     * the object being dropped from a message that still MACs it. */
+    const uint8_t* wanted_mac =
+        bit_buffer_get_data(wanted) + bit_buffer_get_size_bytes(wanted) - 9;
+    const uint8_t* bare_mac = bit_buffer_get_data(bare) + bit_buffer_get_size_bytes(bare) - 9;
+    munit_assert_memory_not_equal(SEOS_WORKER_CMAC_SIZE, wanted_mac, bare_mac);
+
+    bit_buffer_free(wanted);
+    bit_buffer_free(bare);
+    secure_messaging_free(with_le);
+    secure_messaging_free(without_le);
     return MUNIT_OK;
 }
 
@@ -266,7 +319,7 @@ static void assert_tamper_rejected(size_t index, uint8_t mask, uint16_t expected
 
     BitBuffer* buffer = bit_buffer_alloc(RX_CAPACITY);
     munit_assert_true(secure_messaging_wrap_apdu(
-        sender, message, sizeof(message), header, sizeof(header), buffer));
+        sender, message, sizeof(message), header, sizeof(header), true, buffer));
 
     uint8_t raw[RX_CAPACITY];
     size_t len = bit_buffer_get_size_bytes(buffer);
@@ -312,7 +365,7 @@ static MunitResult test_rejects_tampered_checksum(const MunitParameter p[], void
 
     BitBuffer* buffer = bit_buffer_alloc(RX_CAPACITY);
     munit_assert_true(secure_messaging_wrap_apdu(
-        sender, message, sizeof(message), header, sizeof(header), buffer));
+        sender, message, sizeof(message), header, sizeof(header), true, buffer));
 
     uint8_t raw[RX_CAPACITY];
     size_t len = bit_buffer_get_size_bytes(buffer);
@@ -367,7 +420,7 @@ static MunitResult test_rejects_replay(const MunitParameter p[], void* d) {
 
     BitBuffer* first = bit_buffer_alloc(RX_CAPACITY);
     munit_assert_true(secure_messaging_wrap_apdu(
-        sender, message, sizeof(message), header, sizeof(header), first));
+        sender, message, sizeof(message), header, sizeof(header), true, first));
 
     uint8_t raw[RX_CAPACITY];
     size_t len = bit_buffer_get_size_bytes(first);
@@ -426,6 +479,12 @@ static MunitTest test_secure_messaging_cases[] = {
     {(char*)"/padding/all-lengths", test_all_lengths, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
     {(char*)"/padding/largest", test_largest_message, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
     {(char*)"/length/long-form", test_long_form_length, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
+    {(char*)"/wrap/protected-le",
+     test_protected_le_follows_the_case,
+     NULL,
+     NULL,
+     MUNIT_TEST_OPTION_NONE,
+     NULL},
     {(char*)"/wrap/oversized",
      test_rejects_oversized_message,
      NULL,

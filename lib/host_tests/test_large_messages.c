@@ -46,7 +46,7 @@ static void assert_command_round_trips(uint8_t cipher, uint8_t hash, size_t len)
 
     BitBuffer* wire = bit_buffer_alloc(BUFFER_CAPACITY);
     munit_assert_true(secure_messaging_wrap_apdu(
-        sender, message, len, (uint8_t*)SEOS_SM_HEADER, sizeof(SEOS_SM_HEADER), wire));
+        sender, message, len, (uint8_t*)SEOS_SM_HEADER, sizeof(SEOS_SM_HEADER), true, wire));
 
     munit_assert_true(secure_messaging_unwrap_apdu(receiver, wire));
     munit_assert_size(bit_buffer_get_size_bytes(wire), ==, len);
@@ -120,6 +120,7 @@ static MunitResult test_command_too_long_is_refused(const MunitParameter p[], vo
             lengths[i],
             (uint8_t*)SEOS_SM_HEADER,
             sizeof(SEOS_SM_HEADER),
+            true,
             wire));
 
         bit_buffer_free(wire);
@@ -176,13 +177,13 @@ static MunitResult test_long_then_short(const MunitParameter p[], void* d) {
 
     BitBuffer* wire = bit_buffer_alloc(BUFFER_CAPACITY);
     munit_assert_true(secure_messaging_wrap_apdu(
-        sender, big, sizeof(big), (uint8_t*)SEOS_SM_HEADER, sizeof(SEOS_SM_HEADER), wire));
+        sender, big, sizeof(big), (uint8_t*)SEOS_SM_HEADER, sizeof(SEOS_SM_HEADER), true, wire));
     munit_assert_true(secure_messaging_unwrap_apdu(receiver, wire));
     munit_assert_size(bit_buffer_get_size_bytes(wire), ==, sizeof(big));
 
     bit_buffer_reset(wire);
     munit_assert_true(secure_messaging_wrap_apdu(
-        sender, small, sizeof(small), (uint8_t*)SEOS_SM_HEADER, sizeof(SEOS_SM_HEADER), wire));
+        sender, small, sizeof(small), (uint8_t*)SEOS_SM_HEADER, sizeof(SEOS_SM_HEADER), true, wire));
     munit_assert_true(secure_messaging_unwrap_apdu(receiver, wire));
     munit_assert_size(bit_buffer_get_size_bytes(wire), ==, sizeof(small));
     munit_assert_memory_equal(sizeof(small), bit_buffer_get_data(wire), small);

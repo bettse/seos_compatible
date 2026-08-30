@@ -64,6 +64,7 @@ static void write_exchange_begin(WriteExchange* exchange, size_t sio_len) {
         message_len,
         (uint8_t*)SEOS_SM_PUT_HEADER,
         sizeof(SEOS_SM_PUT_HEADER),
+        false,
         wire));
 
     exchange->answer = bit_buffer_alloc(BUFFER_CAPACITY);
@@ -200,12 +201,12 @@ static MunitResult test_refuses_a_protected_failure(const MunitParameter p[], vo
         sizeof(message),
         (uint8_t*)SEOS_SM_PUT_HEADER,
         sizeof(SEOS_SM_PUT_HEADER),
+        false,
         wire));
     munit_assert_true(secure_messaging_unwrap_apdu(card, wire));
 
     BitBuffer* answer = bit_buffer_alloc(BUFFER_CAPACITY);
-    munit_assert_true(
-        secure_messaging_wrap_rapdu(card, NULL, 0, SEOS_SW_NOT_ENOUGH_ROOM, answer));
+    munit_assert_true(secure_messaging_wrap_rapdu(card, NULL, 0, SEOS_SW_NOT_ENOUGH_ROOM, answer));
 
     munit_assert_false(seos_reader_write_accepted(reader, answer));
 
@@ -236,6 +237,7 @@ static MunitResult test_steps_the_counter(const MunitParameter p[], void* d) {
         sizeof(follow_up),
         (uint8_t*)SEOS_SM_HEADER,
         sizeof(SEOS_SM_HEADER),
+        true,
         wire));
 
     BitBuffer* answer = bit_buffer_alloc(BUFFER_CAPACITY);

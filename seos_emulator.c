@@ -214,11 +214,16 @@ NfcCommand seos_worker_listener_process_message(Seos* seos) {
         view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventAuthenticated);
         // Prepare for future communication
         seos_emulator->secure_messaging = secure_messaging_alloc(&seos_emulator->params);
-    } else if(memcmp(apdu, SEOS_GET_RESPONSE, sizeof(SEOS_GET_RESPONSE) - 1) == 0) {
+    } else if(
+        apdu_len >= SEOS_GET_RESPONSE_LEN &&
+        memcmp(apdu, SEOS_GET_RESPONSE, SEOS_GET_RESPONSE_LEN - 1) == 0) {
         seos_emulator_response_complete = true;
         if(seos_emulator->secure_messaging) {
             seos_sm_command_get_response(
-                seos_emulator->secure_messaging, emulator_frame_budget(seos), tx_buffer);
+                seos_emulator->secure_messaging,
+                emulator_frame_budget(seos),
+                apdu[SEOS_GET_RESPONSE_LEN - 1],
+                tx_buffer);
         } else {
             seos_sm_append_status(tx_buffer, SECURE_MESSAGING_SW_INCORRECT_DO);
         }

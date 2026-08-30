@@ -99,6 +99,7 @@ static size_t exchange_framed(
         plain_command_len,
         (uint8_t*)exchange_header,
         sizeof(SEOS_SM_HEADER),
+        true,
         wire));
 
     BitBuffer* answer = bit_buffer_alloc(BUFFER_CAPACITY);
@@ -130,7 +131,7 @@ static size_t exchange_framed(
             break;
         }
         bit_buffer_reset(answer);
-        seos_sm_command_get_response(card, max_frame_len, answer);
+        seos_sm_command_get_response(card, max_frame_len, 0x00, answer);
     }
     bit_buffer_free(answer);
     answer = collected;
@@ -232,7 +233,7 @@ static MunitResult test_extended_header_list(const MunitParameter p[], void* d) 
     (void)p;
     (void)d;
     SeosCredential credential = credential_with_sio(8);
-    uint8_t request[] = {0x4d, 0x02, 0xff, 0x00};
+    uint8_t request[] = {0x4d, 0x03, 0xff, 0x00, 0x00};
     uint8_t recovered[BUFFER_CAPACITY];
     EventLog log = {0};
 
@@ -251,7 +252,7 @@ static MunitResult test_extended_header_list_many(const MunitParameter p[], void
     (void)p;
     (void)d;
     SeosCredential credential = credential_with_sio(12);
-    uint8_t request[] = {0x4d, 0x05, 0xff, 0x41, 0xff, 0x00, 0x41};
+    uint8_t request[] = {0x4d, 0x06, 0xff, 0x41, 0x00, 0xff, 0x00, 0x00};
     uint8_t recovered[BUFFER_CAPACITY];
     EventLog log = {0};
 
@@ -268,7 +269,7 @@ static MunitResult test_extended_header_list_unknown(const MunitParameter p[], v
     (void)p;
     (void)d;
     SeosCredential credential = credential_with_sio(8);
-    uint8_t request[] = {0x4d, 0x04, 0xff, 0x41, 0xff, 0x42};
+    uint8_t request[] = {0x4d, 0x06, 0xff, 0x41, 0x00, 0xff, 0x42, 0x00};
     uint8_t recovered[BUFFER_CAPACITY];
     EventLog log = {0};
 
@@ -383,7 +384,7 @@ static MunitResult test_get_response_without_pending(const MunitParameter p[], v
     SecureMessaging* card = secure_messaging_alloc(&params);
 
     BitBuffer* answer = bit_buffer_alloc(BUFFER_CAPACITY);
-    seos_sm_command_get_response(card, SEOS_SM_MAX_FRAME, answer);
+    seos_sm_command_get_response(card, SEOS_SM_MAX_FRAME, 0x00, answer);
 
     munit_assert_size(bit_buffer_get_size_bytes(answer), ==, 2);
     munit_assert_uint8(bit_buffer_get_byte(answer, 0), ==, 0x6a);
@@ -409,7 +410,13 @@ static MunitResult test_new_command_drops_pending(const MunitParameter p[], void
     BitBuffer* answer = bit_buffer_alloc(BUFFER_CAPACITY);
 
     munit_assert_true(secure_messaging_wrap_apdu(
-        reader, request, sizeof(request), (uint8_t*)SEOS_SM_HEADER, sizeof(SEOS_SM_HEADER), wire));
+        reader,
+        request,
+        sizeof(request),
+        (uint8_t*)SEOS_SM_HEADER,
+        sizeof(SEOS_SM_HEADER),
+        true,
+        wire));
     seos_sm_command_handle(
         card,
         &credential,
@@ -428,7 +435,13 @@ static MunitResult test_new_command_drops_pending(const MunitParameter p[], void
     bit_buffer_reset(answer);
     bit_buffer_reset(wire);
     munit_assert_true(secure_messaging_wrap_apdu(
-        reader, request, sizeof(request), (uint8_t*)SEOS_SM_HEADER, sizeof(SEOS_SM_HEADER), wire));
+        reader,
+        request,
+        sizeof(request),
+        (uint8_t*)SEOS_SM_HEADER,
+        sizeof(SEOS_SM_HEADER),
+        true,
+        wire));
     seos_sm_command_handle(
         card,
         &credential,
@@ -636,7 +649,6 @@ static MunitResult test_exchange_steps(const MunitParameter p[], void* d) {
     return MUNIT_OK;
 }
 
-
 /* A write and a read are opposite directions and must not share a view event.
  * They did, and the emulation scenes answer the read event by offering to save
  * over the file the credential was loaded from. */
@@ -655,7 +667,93 @@ static MunitResult test_write_and_read_events_differ(const MunitParameter p[], v
     return MUNIT_OK;
 }
 
+/* The reader states how much it wants, and the data field must not exceed it.
+ * A reader asking for sixteen more bytes used to be handed a full frame. */
+static MunitResult test_get_response_honours_le(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    AuthParameters params = command_params();
+    SecureMessaging* card = secure_messaging_alloc(&params);
+    SeosCredential credential = credential_with_sio(120);
+
+    /* A read that will not fit one frame, so something is left pending. */
+    uint8_t request[] = {0x5c, 0x02, 0xff, 0x00};
+    SecureMessaging* reader = secure_messaging_alloc(&params);
+    BitBuffer* wire = bit_buffer_alloc(BUFFER_CAPACITY);
+    munit_assert_true(secure_messaging_wrap_apdu(
+        reader,
+        request,
+        sizeof(request),
+        (uint8_t*)SEOS_SM_HEADER,
+        sizeof(SEOS_SM_HEADER),
+        true,
+        wire));
+
+    BitBuffer* answer = bit_buffer_alloc(BUFFER_CAPACITY);
+    seos_sm_command_handle(
+        card,
+        &credential,
+        bit_buffer_get_data(wire),
+        bit_buffer_get_size_bytes(wire),
+        SEOS_SM_MAX_FRAME,
+        answer,
+        NULL,
+        NULL);
+
+    /* The first frame said more was coming. Ask for only sixteen of it. */
+    bit_buffer_reset(answer);
+    seos_sm_command_get_response(card, SEOS_SM_MAX_FRAME, 0x10, answer);
+
+    /* The data field, status word aside, is what was asked for and no more. */
+    munit_assert_size(bit_buffer_get_size_bytes(answer), ==, 0x10 + sizeof(uint16_t));
+
+    bit_buffer_free(wire);
+    bit_buffer_free(answer);
+    secure_messaging_free(card);
+    secure_messaging_free(reader);
+    return MUNIT_OK;
+}
+
+/* A header list without the length beside each tag is not a header list. */
+static MunitResult test_refuses_bare_tags_in_a_header_list(const MunitParameter p[], void* d) {
+    (void)p;
+    (void)d;
+    SeosCredential credential = credential_with_sio(8);
+    uint8_t recovered[BUFFER_CAPACITY];
+    EventLog log = {0};
+
+    /* Tags with no lengths between them, which is a tag list's shape. */
+    uint8_t bare[] = {0x4d, 0x04, 0xff, 0x00, 0xff, 0x41};
+    exchange(&credential, bare, sizeof(bare), recovered, sizeof(recovered), &log);
+    munit_assert_uint16(last_status_word, ==, SEOS_SW_WRONG_DATA);
+
+    /* A header asking for part of an object, which is not served. */
+    uint8_t partial[] = {0x4d, 0x03, 0xff, 0x00, 0x04};
+    exchange(&credential, partial, sizeof(partial), recovered, sizeof(recovered), &log);
+    munit_assert_uint16(last_status_word, ==, SEOS_SW_WRONG_DATA);
+
+    /* A tag with its length missing off the end. */
+    uint8_t truncated[] = {0x4d, 0x02, 0xff, 0x00};
+    exchange(&credential, truncated, sizeof(truncated), recovered, sizeof(recovered), &log);
+    munit_assert_uint16(last_status_word, ==, SEOS_SW_WRONG_DATA);
+
+    munit_assert_uint(log.sio_requested, ==, 0);
+    return MUNIT_OK;
+}
+
 static MunitTest test_sm_command_cases[] = {
+    {(char*)"/header-list/needs-lengths",
+     test_refuses_bare_tags_in_a_header_list,
+     NULL,
+     NULL,
+     MUNIT_TEST_OPTION_NONE,
+     NULL},
+    {(char*)"/get-response/honours-le",
+     test_get_response_honours_le,
+     NULL,
+     NULL,
+     MUNIT_TEST_OPTION_NONE,
+     NULL},
     {(char*)"/events/write-differs-from-read",
      test_write_and_read_events_differ,
      NULL,
