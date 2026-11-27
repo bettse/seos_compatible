@@ -5,6 +5,8 @@
 #include "seos_sm_event_ui.h"
 #include "seos_iso14443_4.h"
 
+#include <nfc/protocols/iso14443_3a/iso14443_3a_listener.h>
+
 #define TAG "SeosEmulator"
 
 #define DESFIRE_CLA 0x90
@@ -43,6 +45,10 @@ void seos_emulator_free(SeosEmulator* seos_emulator) {
         secure_messaging_free(seos_emulator->secure_messaging);
     }
 
+    if(seos_emulator->inspect_3a) {
+        iso14443_3a_free(seos_emulator->inspect_3a);
+    }
+
     bit_buffer_free(seos_emulator->tx_buffer);
     free(seos_emulator);
 }
@@ -78,41 +84,52 @@ static size_t emulator_frame_budget(Seos* seos) {
     return budget > 0 ? budget : SEOS_SM_MAX_FRAME;
 }
 
-NfcCommand seos_worker_listener_inspect_reader(Seos* seos) {
+Iso14443_3aData* seos_inspect_make_3a_data(void) {
+    Iso14443_3aData* data = iso14443_3a_alloc();
+    uint8_t uid[] = {0x48, 0x49, 0x44, 0x01};
+    iso14443_3a_set_uid(data, uid, sizeof(uid));
+    uint8_t atqa[] = {0x04, 0x00};
+    iso14443_3a_set_atqa(data, atqa);
+    iso14443_3a_set_sak(data, 0x20); // bit5 => ISO-DEP (T=CL), so the reader sends RATS
+    return data;
+}
+
+// Inspection runs on a raw 3A listener so we drive the T=CL block protocol
+// ourselves; the firmware 4A path drops the reader's chained response.
+NfcCommand seos_inspect_listener_callback(NfcGenericEvent event, void* context) {
+    furi_assert(context);
+    furi_assert(event.protocol == NfcProtocolIso14443_3a);
+    Seos* seos = context;
     SeosEmulator* seos_emulator = seos->seos_emulator;
-    BitBuffer* tx_buffer = seos_emulator->tx_buffer;
+    Iso14443_3aListenerEvent* iso_event = event.event_data;
+    Iso14443_3aListener* listener = event.instance;
     NfcCommand ret = NfcCommandContinue;
 
-    size_t offset = 0;
-    size_t apdu_len = 0;
-    if(!emulator_apdu_bounds(seos_emulator->rx_buffer, &offset, &apdu_len)) {
-        FURI_LOG_I(TAG, "Frame carries no command");
-        return ret;
-    }
-    const uint8_t* apdu = bit_buffer_get_data(seos_emulator->rx_buffer) + offset;
+    if(iso_event->type == Iso14443_3aListenerEventTypeReceivedStandardFrame) {
+        uint8_t out[SEOS_INSPECT_WIRE_MAX];
+        SeosInspectEvent ie = SeosInspectEventNone;
+        size_t n = seos_inspect_handle_frame(
+            &seos_emulator->inspect,
+            bit_buffer_get_data(iso_event->data->buffer),
+            bit_buffer_get_size_bytes(iso_event->data->buffer),
+            out,
+            sizeof(out),
+            &ie);
 
-    const uint8_t* aid = NULL;
-    size_t aid_len = 0;
-
-    if(seos_parse_select_aid(apdu, apdu_len, &aid, &aid_len)) {
-        if((aid_len == sizeof(OPERATION_SELECTOR) &&
-            memcmp(aid, OPERATION_SELECTOR, aid_len) == 0)) {
-            FURI_LOG_I(TAG, "OPERATION_SELECTOR");
-            uint8_t enableInspection[] = {
-                0x6f, 0x08, 0x85, 0x06, 0x02, 0x01, 0x40, 0x02, 0x01, 0x00};
-
-            bit_buffer_append_bytes(tx_buffer, enableInspection, sizeof(enableInspection));
-            view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventAIDSelected);
-        } else {
-            FURI_LOG_I(TAG, "Inspect mode: reject other AID");
-            bit_buffer_append_bytes(
-                tx_buffer, (uint8_t*)SEOS_SW_FILE_NOT_FOUND, sizeof(SEOS_SW_FILE_NOT_FOUND));
+        if(n) {
+            bit_buffer_reset(seos_emulator->tx_buffer);
+            bit_buffer_copy_bytes(seos_emulator->tx_buffer, out, n);
+            iso14443_3a_listener_send_standard_frame(listener, seos_emulator->tx_buffer);
         }
-    } else if(apdu[0] == DESFIRE_CLA) {
-        FURI_LOG_I(TAG, "Desfire command received: ignore");
-    } else if(apdu_len > 2) {
-        FURI_LOG_I(TAG, "NFC stop; %d bytes", bit_buffer_get_size_bytes(seos_emulator->rx_buffer));
-        ret = NfcCommandStop;
+
+        if(ie == SeosInspectEventAidSelected) {
+            view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventAIDSelected);
+        } else if(ie == SeosInspectEventDone) {
+            view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventInspectDone);
+            ret = NfcCommandStop;
+        }
+    } else if(iso_event->type == Iso14443_3aListenerEventTypeFieldOff) {
+        seos_emulator->inspect.reasm_len = 0;
     }
 
     return ret;
@@ -342,6 +359,7 @@ NfcCommand seos_worker_listener_callback(NfcGenericEvent event, void* context) {
 #if __has_include(<lib/nfc/protocols/type_4_tag/type_4_tag.h>)
         // With PR #4242 ISO14443-4A response PCB is handled by firmware and not necessary in tx buffer
         UNUSED(rx_len);
+        UNUSED(rx_data);
 #else
         /* Built rather than echoed: the block number has to match what was
          * sent, and everything else in the byte is ours to decide. */
@@ -353,8 +371,6 @@ NfcCommand seos_worker_listener_callback(NfcGenericEvent event, void* context) {
 
         if(seos->flow_mode == FLOW_CRED) {
             ret = seos_worker_listener_process_message(seos);
-        } else if(seos->flow_mode == FLOW_INSPECT) {
-            ret = seos_worker_listener_inspect_reader(seos);
         }
 
         /* The plain command handlers append their data and leave the status

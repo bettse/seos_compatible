@@ -84,6 +84,11 @@ Seos* seos_alloc() {
     seos->widget = widget_alloc();
     view_dispatcher_add_view(seos->view_dispatcher, SeosViewWidget, widget_get_view(seos->widget));
 
+    // Inspection report
+    seos->inspect_view = seos_inspect_view_alloc();
+    view_dispatcher_add_view(
+        seos->view_dispatcher, SeosViewInspect, seos_inspect_view_get_view(seos->inspect_view));
+
     seos->credential = seos_credential_alloc();
     seos->seos_emulator = seos_emulator_alloc(seos->credential);
 
@@ -128,6 +133,10 @@ void seos_free(Seos* seos) {
     // Custom Widget
     view_dispatcher_remove_view(seos->view_dispatcher, SeosViewWidget);
     widget_free(seos->widget);
+
+    // Inspection report
+    view_dispatcher_remove_view(seos->view_dispatcher, SeosViewInspect);
+    seos_inspect_view_free(seos->inspect_view);
 
     // View Dispatcher
     view_dispatcher_free(seos->view_dispatcher);
