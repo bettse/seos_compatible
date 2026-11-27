@@ -14,14 +14,8 @@
 // fragmentation the same as the standalone tool we ported this from.
 static const uint8_t HID_ATS[] = {0x05, 0x78, 0x80, 0x70, 0x02};
 
-// The passthrough applet and the two operation selectors the reader offers.
-static const uint8_t PASSTHROUGH_AID[] =
-    {0xa0, 0x00, 0x00, 0x03, 0x82, 0x00, 0x2d, 0x00, 0x01, 0x01};
-static const uint8_t OP_SELECTOR_AID[] =
-    {0xa0, 0x00, 0x00, 0x03, 0x82, 0x00, 0x2f, 0x00, 0x01, 0x01};
-static const uint8_t OP_SELECTOR_RESET_AID[] =
-    {0xa0, 0x00, 0x00, 0x03, 0x82, 0x00, 0x31, 0x00, 0x01, 0x01};
-
+// The reader offers the two operation selectors, then passes our commands
+// through the application it selects as MOBILE_SEOS_ADMIN_CARD.
 static const uint8_t RESP_PASSTHROUGH_FCI[] =
     {0x6f, 0x0c, 0x84, 0x0a, 0xa0, 0x00, 0x00, 0x03, 0x82, 0x00, 0x2d, 0x00, 0x01, 0x01};
 static const uint8_t RESP_ENABLE_INSPECTION[] =
@@ -337,14 +331,18 @@ static SeosInspectEvent
     size_t aid_len = 0;
 
     if(seos_parse_select_aid(apdu, apdu_len, &aid, &aid_len)) {
-        if(aid_is(aid, aid_len, PASSTHROUGH_AID, sizeof(PASSTHROUGH_AID))) {
+        if(aid_is(aid, aid_len, MOBILE_SEOS_ADMIN_CARD, sizeof(MOBILE_SEOS_ADMIN_CARD))) {
             ins->state = SeosInspectSelected;
             bit_buffer_append_bytes(tx, RESP_PASSTHROUGH_FCI, sizeof(RESP_PASSTHROUGH_FCI));
             append_sw(tx, SEOS_SW_SUCCESS);
             return SeosInspectEventNone;
         }
-        if(aid_is(aid, aid_len, OP_SELECTOR_AID, sizeof(OP_SELECTOR_AID)) ||
-           aid_is(aid, aid_len, OP_SELECTOR_RESET_AID, sizeof(OP_SELECTOR_RESET_AID))) {
+        if(aid_is(aid, aid_len, OPERATION_SELECTOR, sizeof(OPERATION_SELECTOR)) ||
+           aid_is(
+               aid,
+               aid_len,
+               OPERATION_SELECTOR_POST_RESET,
+               sizeof(OPERATION_SELECTOR_POST_RESET))) {
             SeosInspectEvent ev = SeosInspectEventNone;
             if(ins->state == SeosInspectIdle) {
                 ins->state = SeosInspectOpSelected;
