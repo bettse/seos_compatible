@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include <furi.h>
+#include <lib/toolbox/bit_buffer.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -73,14 +74,14 @@ const char* seos_inspect_cred_name(size_t i);
 void seos_inspect_reset(SeosInspectData* inspect);
 
 // Handle one raw 3A frame (PCB + INF, no CRC): run the T=CL block protocol and,
-// for a complete APDU, the inspection step. Writes the wire response (PCB + INF,
-// no CRC) to out and returns its length, 0 when nothing should be sent.
-size_t seos_inspect_handle_frame(
+// for a complete APDU, the inspection step. Resets tx and writes the wire
+// response (PCB + INF, no CRC) into it, leaving it empty when nothing should be
+// sent. The caller appends the CRC.
+void seos_inspect_handle_frame(
     SeosInspectData* inspect,
     const uint8_t* frame,
     size_t frame_len,
-    uint8_t* out,
-    size_t out_cap,
+    BitBuffer* tx,
     SeosInspectEvent* event);
 
 #ifdef __cplusplus

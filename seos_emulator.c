@@ -105,19 +105,15 @@ NfcCommand seos_inspect_listener_callback(NfcGenericEvent event, void* context) 
     NfcCommand ret = NfcCommandContinue;
 
     if(iso_event->type == Iso14443_3aListenerEventTypeReceivedStandardFrame) {
-        uint8_t out[SEOS_INSPECT_WIRE_MAX];
         SeosInspectEvent ie = SeosInspectEventNone;
-        size_t n = seos_inspect_handle_frame(
+        seos_inspect_handle_frame(
             &seos_emulator->inspect,
             bit_buffer_get_data(iso_event->data->buffer),
             bit_buffer_get_size_bytes(iso_event->data->buffer),
-            out,
-            sizeof(out),
+            seos_emulator->tx_buffer,
             &ie);
 
-        if(n) {
-            bit_buffer_reset(seos_emulator->tx_buffer);
-            bit_buffer_copy_bytes(seos_emulator->tx_buffer, out, n);
+        if(bit_buffer_get_size_bytes(seos_emulator->tx_buffer) > 0) {
             // Append CRC and send raw. nfc_listener_tx is on both the dev and
             // release firmware APIs; iso14443_3a_listener_send_standard_frame
             // is not on release.

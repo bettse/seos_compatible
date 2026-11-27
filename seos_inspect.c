@@ -2,6 +2,7 @@
 
 #include "seos_tlv.h"
 #include "seos_protocol.h"
+#include "seos_iso14443_4.h"
 
 #include <string.h>
 
@@ -50,35 +51,22 @@ static const uint8_t CMD_SNMP_CRED[] = {
 #define CT_ANY   (-1)
 #define PROX_IDX 7
 
-static const struct {
+typedef struct {
     const char* name;
     uint32_t hivecode;
     int16_t card_type;
-} CRED_ITEMS[SEOS_INSPECT_CRED_COUNT] = {
-    {"iCLASS", 1673300735, CT_ANY},
-    {"iCLASS SE", 1283979105, 3},
-    {"DESFire SIO", 1283979105, 1},
-    {"MIFARE SIO", 1283979105, 2},
-    {"DESFire CSN", 2270514240, 1},
-    {"MIFARE CSN", 2270514240, 2},
-    {"CSN Only", 2270514240, CT_ANY},
-    {"125kHz Prox", 2983013903, CT_ANY},
+} CredItem;
+
+static const CredItem CRED_ITEMS[SEOS_INSPECT_CRED_COUNT] = {
+    {"iCLASS", 0x63BC8AFF, CT_ANY},
+    {"iCLASS SE", 0x4C87F761, 3},
+    {"DESFire SIO", 0x4C87F761, 1},
+    {"MIFARE SIO", 0x4C87F761, 2},
+    {"DESFire CSN", 0x87554C40, 1},
+    {"MIFARE CSN", 0x87554C40, 2},
+    {"CSN Only", 0x87554C40, CT_ANY},
+    {"125kHz Prox", 0xB1CD2E0F, CT_ANY},
 };
-
-// Response accumulator: a plain byte buffer the state machine writes the APDU
-// reply into, before the T=CL layer wraps it in an I-block.
-typedef struct {
-    uint8_t* buf;
-    size_t len;
-    size_t cap;
-} RespBuf;
-
-static void resp_add(RespBuf* r, const uint8_t* d, size_t n) {
-    if(r->len + n <= r->cap) {
-        memcpy(r->buf + r->len, d, n);
-        r->len += n;
-    }
-}
 
 const char* seos_inspect_cred_name(size_t i) {
     return (i < SEOS_INSPECT_CRED_COUNT) ? CRED_ITEMS[i].name : "";
@@ -195,10 +183,11 @@ static bool snmp_cred_value(
     const uint8_t** out,
     size_t* out_len,
     size_t* declared_len) {
+    // OBJECT IDENTIFIER (tag 06, len 05) for OID 03 01 07 01 5F.
+    static const uint8_t OID[] = {0x06, 0x05, 0x03, 0x01, 0x07, 0x01, 0x5f};
     for(size_t i = 0; i + 8 < len; i++) {
-        if(data[i] == 0x06 && data[i + 1] == 0x05 && data[i + 2] == 0x03 && data[i + 3] == 0x01 &&
-           data[i + 4] == 0x07 && data[i + 5] == 0x01 && data[i + 6] == 0x5f) {
-            size_t vp = i + 7;
+        if(memcmp(&data[i], OID, sizeof(OID)) == 0) {
+            size_t vp = i + sizeof(OID);
             if(vp >= len) return false;
             uint8_t vtag = data[vp++];
             if(vtag == 0x05) return false;
@@ -255,7 +244,7 @@ static void parse_cred_table(const uint8_t* table, size_t len, SeosInspectData* 
                     ins->cred_enabled[ci] = true;
                 }
             }
-            if(hv == 1283979105 && ct == 7) ins->seos_enabled = true;
+            if(hv == 0x4C87F761 && ct == 7) ins->seos_enabled = true;
             pos += 9;
         }
     }
@@ -267,13 +256,13 @@ static void parse_cred_table(const uint8_t* table, size_t len, SeosInspectData* 
     }
 }
 
-static void append_sw(RespBuf* r, const uint8_t sw[2]) {
-    resp_add(r, sw, 2);
+static void append_sw(BitBuffer* tx, const uint8_t sw[2]) {
+    bit_buffer_append_bytes(tx, sw, 2);
 }
 
-static void send_cmd(SeosInspectData* ins, const uint8_t* cmd, size_t len, RespBuf* r) {
-    resp_add(r, cmd, len);
-    append_sw(r, SEOS_SW_SUCCESS);
+static void send_cmd(SeosInspectData* ins, const uint8_t* cmd, size_t len, BitBuffer* tx) {
+    bit_buffer_append_bytes(tx, cmd, len);
+    append_sw(tx, SEOS_SW_SUCCESS);
     ins->cmd_sent = true;
 }
 
@@ -310,15 +299,15 @@ void seos_inspect_reset(SeosInspectData* inspect) {
 
 // Answer a SELECT in any pre-inspection state, or begin the IPC poll loop.
 static SeosInspectEvent
-    handshake(SeosInspectData* ins, const uint8_t* apdu, size_t apdu_len, RespBuf* r) {
+    handshake(SeosInspectData* ins, const uint8_t* apdu, size_t apdu_len, BitBuffer* tx) {
     const uint8_t* aid = NULL;
     size_t aid_len = 0;
 
     if(seos_parse_select_aid(apdu, apdu_len, &aid, &aid_len)) {
         if(aid_is(aid, aid_len, PASSTHROUGH_AID, sizeof(PASSTHROUGH_AID))) {
             ins->state = SeosInspectSelected;
-            resp_add(r, RESP_PASSTHROUGH_FCI, sizeof(RESP_PASSTHROUGH_FCI));
-            append_sw(r, SEOS_SW_SUCCESS);
+            bit_buffer_append_bytes(tx, RESP_PASSTHROUGH_FCI, sizeof(RESP_PASSTHROUGH_FCI));
+            append_sw(tx, SEOS_SW_SUCCESS);
             return SeosInspectEventNone;
         }
         if(aid_is(aid, aid_len, OP_SELECTOR_AID, sizeof(OP_SELECTOR_AID)) ||
@@ -328,31 +317,31 @@ static SeosInspectEvent
                 ins->state = SeosInspectOpSelected;
                 ev = SeosInspectEventAidSelected;
             }
-            resp_add(r, RESP_ENABLE_INSPECTION, sizeof(RESP_ENABLE_INSPECTION));
-            append_sw(r, SEOS_SW_SUCCESS);
+            bit_buffer_append_bytes(tx, RESP_ENABLE_INSPECTION, sizeof(RESP_ENABLE_INSPECTION));
+            append_sw(tx, SEOS_SW_SUCCESS);
             return ev;
         }
-        append_sw(r, SEOS_SW_FILE_NOT_FOUND);
+        append_sw(tx, SEOS_SW_FILE_NOT_FOUND);
         return SeosInspectEventNone;
     }
 
     if(ins->state != SeosInspectIdle) {
         if(is_get_data(apdu, apdu_len)) {
             ins->state = SeosInspectSamVer;
-            send_cmd(ins, CMD_SAM_VER, sizeof(CMD_SAM_VER), r);
+            send_cmd(ins, CMD_SAM_VER, sizeof(CMD_SAM_VER), tx);
             return SeosInspectEventNone;
         }
         if(is_put_data(apdu, apdu_len)) {
-            append_sw(r, SEOS_SW_SUCCESS);
+            append_sw(tx, SEOS_SW_SUCCESS);
             return SeosInspectEventNone;
         }
     }
-    append_sw(r, SW_INS_NOT_SUPPORTED);
+    append_sw(tx, SW_INS_NOT_SUPPORTED);
     return SeosInspectEventNone;
 }
 
 static SeosInspectEvent
-    collection(SeosInspectData* ins, const uint8_t* apdu, size_t apdu_len, RespBuf* r) {
+    collection(SeosInspectData* ins, const uint8_t* apdu, size_t apdu_len, BitBuffer* tx) {
     bool is_ca = is_get_data(apdu, apdu_len);
     bool is_da = is_put_data(apdu, apdu_len);
     size_t payload_len = 0;
@@ -373,7 +362,7 @@ static SeosInspectEvent
             }
         }
         ins->cmd_sent = false;
-        append_sw(r, SEOS_SW_SUCCESS);
+        append_sw(tx, SEOS_SW_SUCCESS);
         return SeosInspectEventNone;
     }
 
@@ -405,7 +394,7 @@ static SeosInspectEvent
             break;
         }
         ins->cmd_sent = false;
-        append_sw(r, SEOS_SW_SUCCESS);
+        append_sw(tx, SEOS_SW_SUCCESS);
         return SeosInspectEventNone;
     }
 
@@ -417,7 +406,7 @@ static SeosInspectEvent
             ev = SeosInspectEventDone;
         }
         ins->cmd_sent = false;
-        append_sw(r, SEOS_SW_SUCCESS);
+        append_sw(tx, SEOS_SW_SUCCESS);
         return ev;
     }
 
@@ -425,79 +414,79 @@ static SeosInspectEvent
     if(is_ca && !ins->cmd_sent) {
         switch(ins->state) {
         case SeosInspectCoreVer:
-            send_cmd(ins, CMD_CORE_VER, sizeof(CMD_CORE_VER), r);
+            send_cmd(ins, CMD_CORE_VER, sizeof(CMD_CORE_VER), tx);
             return SeosInspectEventNone;
         case SeosInspectPersistMem:
-            send_cmd(ins, CMD_PERSIST_MEM, sizeof(CMD_PERSIST_MEM), r);
+            send_cmd(ins, CMD_PERSIST_MEM, sizeof(CMD_PERSIST_MEM), tx);
             return SeosInspectEventNone;
         case SeosInspectCredConfig:
             ins->poll_count = 0;
-            send_cmd(ins, CMD_SNMP_CRED, sizeof(CMD_SNMP_CRED), r);
+            send_cmd(ins, CMD_SNMP_CRED, sizeof(CMD_SNMP_CRED), tx);
             return SeosInspectEventNone;
         case SeosInspectSuspendEnd:
-            send_cmd(ins, CMD_SUSPEND, sizeof(CMD_SUSPEND), r);
+            send_cmd(ins, CMD_SUSPEND, sizeof(CMD_SUSPEND), tx);
             return SeosInspectEventNone;
         default:
             break;
         }
     }
 
-    append_sw(r, SEOS_SW_SUCCESS);
+    append_sw(tx, SEOS_SW_SUCCESS);
     return SeosInspectEventNone;
 }
 
-// Run one complete APDU through the inspection step, writing the reply (data
-// plus status word) to r.
+// Run one complete APDU through the inspection step, appending the reply (data
+// plus status word) to tx after the I-block header already written there.
 static SeosInspectEvent
-    handle_apdu(SeosInspectData* ins, const uint8_t* apdu, size_t apdu_len, RespBuf* r) {
+    handle_apdu(SeosInspectData* ins, const uint8_t* apdu, size_t apdu_len, BitBuffer* tx) {
     if(apdu_len == 0) {
-        append_sw(r, SEOS_SW_SUCCESS);
+        append_sw(tx, SEOS_SW_SUCCESS);
         return SeosInspectEventNone;
     }
     if(ins->state == SeosInspectDone) {
-        append_sw(r, SEOS_SW_FILE_NOT_FOUND);
+        append_sw(tx, SEOS_SW_FILE_NOT_FOUND);
         return SeosInspectEventNone;
     }
     if(ins->state <= SeosInspectSelected) {
-        return handshake(ins, apdu, apdu_len, r);
+        return handshake(ins, apdu, apdu_len, tx);
     }
-    return collection(ins, apdu, apdu_len, r);
+    return collection(ins, apdu, apdu_len, tx);
 }
 
-size_t seos_inspect_handle_frame(
+void seos_inspect_handle_frame(
     SeosInspectData* ins,
     const uint8_t* frame,
     size_t frame_len,
-    uint8_t* out,
-    size_t out_cap,
+    BitBuffer* tx,
     SeosInspectEvent* event) {
     *event = SeosInspectEventNone;
-    if(frame_len < 1 || out_cap < 1) return 0;
+    bit_buffer_reset(tx);
+    if(frame_len < 1) return;
     uint8_t pcb = frame[0];
+
+    // RATS and PPS sit outside the block layer and would both be misread as
+    // S-blocks by the classifier, so they are handled before it.
 
     // RATS: record CID, answer with our ATS.
     if(pcb == 0xe0 && frame_len >= 2) {
         ins->cid = frame[1] & 0x0f;
         ins->reasm_len = 0;
-        if(sizeof(HID_ATS) > out_cap) return 0;
-        memcpy(out, HID_ATS, sizeof(HID_ATS));
-        return sizeof(HID_ATS);
+        bit_buffer_copy_bytes(tx, HID_ATS, sizeof(HID_ATS));
+        return;
     }
 
     // PPS: echo the PPSS byte.
     if((pcb & 0xf0) == 0xd0) {
-        out[0] = pcb;
-        return 1;
+        bit_buffer_append_byte(tx, pcb);
+        return;
     }
 
-    // I-block.
-    if((pcb & 0xe2) == 0x02) {
-        bool chain = pcb & 0x10;
-        bool has_cid = pcb & 0x08;
-        bool has_nad = pcb & 0x04;
-        uint8_t blk = pcb & 0x01;
-        size_t off = 1 + (has_cid ? 1 : 0) + (has_nad ? 1 : 0);
+    SeosIso14443_4BlockType block = seos_iso14443_4_classify(pcb);
+    bool has_cid = pcb & SEOS_ISO14443_4_PCB_CID;
 
+    if(block == SeosIso14443_4BlockI) {
+        // Gather this block's payload into the reassembly buffer.
+        size_t off = seos_iso14443_4_header_len(pcb);
         if(off <= frame_len) {
             size_t inf = frame_len - off;
             if(ins->reasm_len + inf <= sizeof(ins->reasm)) {
@@ -506,57 +495,46 @@ size_t seos_inspect_handle_frame(
             }
         }
 
-        // More to come: ACK with the block number echoed, wait for the rest.
-        if(chain) {
-            size_t n = 0;
-            out[n++] = 0xa2 | blk | (has_cid ? 0x08 : 0);
-            if(has_cid && n < out_cap) out[n++] = ins->cid;
-            return n;
+        // More to come: acknowledge with an R-block carrying the block number
+        // (an ACK is a NAK without the NAK bit) and wait for the rest.
+        if(seos_iso14443_4_is_chaining(pcb)) {
+            bit_buffer_append_byte(tx, seos_iso14443_4_nak_pcb(pcb) & ~SEOS_ISO14443_4_PCB_NAK);
+            if(has_cid) bit_buffer_append_byte(tx, ins->cid);
+            return;
         }
 
-        // Last block: run the APDU, wrap the reply as an I-block.
-        uint8_t resp[SEOS_INSPECT_WIRE_MAX];
-        RespBuf r = {resp, 0, sizeof(resp)};
-        *event = handle_apdu(ins, ins->reasm, ins->reasm_len, &r);
+        // Last block: write the I-block header, then run the APDU, which
+        // appends its reply after it.
+        bit_buffer_append_byte(tx, seos_iso14443_4_response_pcb(pcb, false));
+        if(has_cid) bit_buffer_append_byte(tx, ins->cid);
+        *event = handle_apdu(ins, ins->reasm, ins->reasm_len, tx);
         ins->reasm_len = 0;
 
-        size_t n = 0;
-        out[n++] = 0x02 | blk | (has_cid ? 0x08 : 0);
-        if(has_cid && n < out_cap) out[n++] = ins->cid;
-        if(r.len && n + r.len <= out_cap) {
-            memcpy(out + n, resp, r.len);
-            n += r.len;
-        }
+        // Keep a copy to resend if an R-block asks for it.
+        size_t n = bit_buffer_get_size_bytes(tx);
         if(n <= sizeof(ins->last_tx)) {
-            memcpy(ins->last_tx, out, n);
+            memcpy(ins->last_tx, bit_buffer_get_data(tx), n);
             ins->last_tx_len = n;
         }
-        return n;
+        return;
     }
 
-    // R-block: retransmit our last I-block.
-    if((pcb & 0xa0) == 0xa0) {
-        if(ins->last_tx_len && ins->last_tx_len <= out_cap) {
-            memcpy(out, ins->last_tx, ins->last_tx_len);
-            return ins->last_tx_len;
-        }
-        return 0;
+    if(block == SeosIso14443_4BlockR) {
+        // Retransmit our last I-block.
+        if(ins->last_tx_len) bit_buffer_copy_bytes(tx, ins->last_tx, ins->last_tx_len);
+        return;
     }
 
-    // S-block: WTX (echo request) or DESELECT (echo, reset).
-    if((pcb & 0xc0) == 0xc0) {
-        bool has_cid = pcb & 0x08;
-        size_t n = 0;
-        out[n++] = pcb;
-        if(has_cid && n < out_cap) out[n++] = ins->cid;
-        if((pcb & 0x30) == 0x30) {
-            size_t inf_off = 1 + (has_cid ? 1 : 0);
-            if(inf_off < frame_len && n < out_cap) out[n++] = frame[inf_off] & 0x3f;
-        } else {
+    if(block == SeosIso14443_4BlockS) {
+        // Echo the block. DESELECT ends the exchange; WTX carries its request
+        // byte back.
+        bit_buffer_append_byte(tx, pcb);
+        if(has_cid) bit_buffer_append_byte(tx, ins->cid);
+        if(seos_iso14443_4_is_deselect(pcb)) {
             ins->reasm_len = 0;
+        } else {
+            size_t inf_off = seos_iso14443_4_header_len(pcb);
+            if(inf_off < frame_len) bit_buffer_append_byte(tx, frame[inf_off] & 0x3f);
         }
-        return n;
     }
-
-    return 0;
 }

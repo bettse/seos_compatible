@@ -96,7 +96,6 @@ void seos_scene_emulate_on_exit(void* context) {
 
     // Clear view
     popup_reset(seos->popup);
-    text_box_reset(seos->text_box);
 
     seos_blink_stop(seos);
 }
