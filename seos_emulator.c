@@ -102,7 +102,6 @@ NfcCommand seos_inspect_listener_callback(NfcGenericEvent event, void* context) 
     Seos* seos = context;
     SeosEmulator* seos_emulator = seos->seos_emulator;
     Iso14443_3aListenerEvent* iso_event = event.event_data;
-    Iso14443_3aListener* listener = event.instance;
     NfcCommand ret = NfcCommandContinue;
 
     if(iso_event->type == Iso14443_3aListenerEventTypeReceivedStandardFrame) {
@@ -119,7 +118,11 @@ NfcCommand seos_inspect_listener_callback(NfcGenericEvent event, void* context) 
         if(n) {
             bit_buffer_reset(seos_emulator->tx_buffer);
             bit_buffer_copy_bytes(seos_emulator->tx_buffer, out, n);
-            iso14443_3a_listener_send_standard_frame(listener, seos_emulator->tx_buffer);
+            // Append CRC and send raw. nfc_listener_tx is on both the dev and
+            // release firmware APIs; iso14443_3a_listener_send_standard_frame
+            // is not on release.
+            iso14443_crc_append(Iso14443CrcTypeA, seos_emulator->tx_buffer);
+            nfc_listener_tx(seos->nfc, seos_emulator->tx_buffer);
         }
 
         if(ie == SeosInspectEventAidSelected) {
