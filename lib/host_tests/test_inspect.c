@@ -77,6 +77,11 @@ static void run_to_credential_request(Session* s) {
     send_select(s, 0x2f);
     munit_assert_int(s->last_event, ==, SeosInspectEventAidSelected);
     send_select(s, 0x2d);
+    /* The application is confirmed by naming it back. */
+    const uint8_t named[] = {I_BLOCK, 0x6f, 0x0c, 0x84, 0x0a, 0xa0, 0x00, 0x00, 0x03, 0x82,
+                             0x00,    0x2d, 0x00, 0x01, 0x01, 0x90, 0x00};
+    munit_assert_size(bit_buffer_get_size_bytes(s->tx), ==, sizeof(named));
+    munit_assert_memory_equal(sizeof(named), bit_buffer_get_data(s->tx), named);
 
     /* Each result is wrapped twice before the values. */
     const uint8_t sam[] = {0xbd, 0x06, 0x8a, 0x04, 0x80, 0x02, 0x01, 0xbd};
