@@ -59,7 +59,7 @@ typedef struct {
 
 static const CredItem CRED_ITEMS[SEOS_INSPECT_CRED_COUNT] = {
     {"iCLASS", 0x63BC8AFF, CT_ANY},
-    {"iCLASS SE", 0x4C87F761, 3},
+    {"iCLASS SE/SR", 0x4C87F761, 3},
     {"DESFire SIO", 0x4C87F761, 1},
     {"MIFARE SIO", 0x4C87F761, 2},
     {"DESFire CSN", 0x87554C40, 1},
