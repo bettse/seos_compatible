@@ -89,11 +89,17 @@ static uint32_t be_uint(const uint8_t* d, size_t len) {
     return v;
 }
 
-// Depth-first search for the first object with the given tag.
+// How many objects deep find_tag looks. The reader decides how its answer
+// nests and each layer is a call on the NFC worker's stack.
+#define FIND_TAG_DEPTH 8
+
+// Depth-first search for the first object with the given tag, `depth` objects
+// down at most.
 static bool find_tag(
     const uint8_t* data,
     size_t len,
     uint16_t tag,
+    uint8_t depth,
     const uint8_t** value,
     size_t* value_len) {
     SeosTlvCursor cursor;
@@ -107,8 +113,8 @@ static bool find_tag(
             return true;
         }
         uint8_t first = (obj.tag > 0xff) ? (uint8_t)(obj.tag >> 8) : (uint8_t)obj.tag;
-        if((first & 0x20) && obj.value_len > 0) {
-            if(find_tag(obj.value, obj.value_len, tag, value, value_len)) return true;
+        if((first & 0x20) && obj.value_len > 0 && depth > 0) {
+            if(find_tag(obj.value, obj.value_len, tag, depth - 1, value, value_len)) return true;
         }
     }
     return false;
@@ -398,19 +404,19 @@ static SeosInspectEvent
         size_t vl = 0;
         switch(ins->state) {
         case SeosInspectSamVer:
-            if(find_tag(payload, payload_len, 0x80, &v, &vl)) ins->sam_ver = (uint16_t)be_uint(v, vl);
+            if(find_tag(payload, payload_len, 0x80, FIND_TAG_DEPTH, &v, &vl)) ins->sam_ver = (uint16_t)be_uint(v, vl);
             FURI_LOG_I(TAG, "SAM=0x%04X", ins->sam_ver);
             ins->state = SeosInspectCoreVer;
             break;
         case SeosInspectCoreVer:
-            if(find_tag(payload, payload_len, 0x80, &v, &vl)) ins->core_ver = (uint16_t)be_uint(v, vl);
+            if(find_tag(payload, payload_len, 0x80, FIND_TAG_DEPTH, &v, &vl)) ins->core_ver = (uint16_t)be_uint(v, vl);
             FURI_LOG_I(TAG, "Core=0x%04X", ins->core_ver);
             ins->state = SeosInspectPersistMem;
             break;
         case SeosInspectPersistMem:
-            if(find_tag(payload, payload_len, 0x80, &v, &vl)) ins->segment_count = (uint8_t)be_uint(v, vl);
-            if(find_tag(payload, payload_len, 0x81, &v, &vl)) ins->assembly_count = (uint8_t)be_uint(v, vl);
-            if(find_tag(payload, payload_len, 0x82, &v, &vl)) ins->persist_mem = be_uint(v, vl);
+            if(find_tag(payload, payload_len, 0x80, FIND_TAG_DEPTH, &v, &vl)) ins->segment_count = (uint8_t)be_uint(v, vl);
+            if(find_tag(payload, payload_len, 0x81, FIND_TAG_DEPTH, &v, &vl)) ins->assembly_count = (uint8_t)be_uint(v, vl);
+            if(find_tag(payload, payload_len, 0x82, FIND_TAG_DEPTH, &v, &vl)) ins->persist_mem = be_uint(v, vl);
             FURI_LOG_I(
                 TAG, "Apps=%u Segs=%u Mem=%lu", ins->assembly_count, ins->segment_count,
                 (unsigned long)ins->persist_mem);
