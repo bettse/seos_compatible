@@ -70,9 +70,8 @@ bool seos_scene_emulate_on_event(void* context, SceneManagerEvent event) {
             notification_message(seos->notifications, &sequence_success);
             consumed = true;
         } else if(event.event == SeosCustomEventInspectDone) {
-            seos_inspect_view_set_data(seos->inspect_view, &seos->seos_emulator->inspect);
-            view_dispatcher_switch_to_view(seos->view_dispatcher, SeosViewInspect);
             notification_message(seos->notifications, &sequence_success);
+            scene_manager_next_scene(seos->scene_manager, SeosSceneInspectReport);
             consumed = true;
         }
     }

@@ -16,9 +16,18 @@ void seos_inspect_view_free(SeosInspectView* instance);
 
 View* seos_inspect_view_get_view(SeosInspectView* instance);
 
-// Point the view at a finished inspection and reset it to the first page. The
+// Point the view at a finished inspection and scroll it back to the top. The
 // data must outlive the view (it lives in the emulator).
 void seos_inspect_view_set_data(SeosInspectView* instance, const SeosInspectData* data);
+
+// Called when Left is pressed, which asks for the page before this one. Back
+// is not handled here and goes to the scene manager as usual.
+typedef void (*SeosInspectViewLeftCallback)(void* context);
+
+void seos_inspect_view_set_left_callback(
+    SeosInspectView* instance,
+    SeosInspectViewLeftCallback callback,
+    void* context);
 
 #ifdef __cplusplus
 }

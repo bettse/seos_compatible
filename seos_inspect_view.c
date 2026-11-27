@@ -1,7 +1,6 @@
 #include "seos_inspect_view.h"
 
 #include <furi.h>
-#include <gui/elements.h>
 
 #define SCREEN_W      128
 #define SCREEN_H      64
@@ -10,19 +9,15 @@
 #define CRED_VISIBLE  ((SCREEN_H - CRED_HEADER_H) / CRED_LINE_H)
 #define CRED_TOTAL    (1 + SEOS_INSPECT_CRED_COUNT) // Seos row + items
 
-typedef enum {
-    SeosInspectPageReport,
-    SeosInspectPageCredentials,
-} SeosInspectPage;
-
 typedef struct {
     const SeosInspectData* data;
-    SeosInspectPage page;
     uint8_t cred_scroll;
 } SeosInspectViewModel;
 
 struct SeosInspectView {
     View* view;
+    SeosInspectViewLeftCallback left_callback;
+    void* left_context;
 };
 
 static uint8_t cred_max_scroll(void) {
@@ -37,40 +32,6 @@ static void draw_check(Canvas* canvas, int32_t x, int32_t y) {
 static void draw_cross(Canvas* canvas, int32_t x, int32_t y) {
     canvas_draw_line(canvas, x, y, x + 5, y + 5);
     canvas_draw_line(canvas, x, y + 5, x + 5, y);
-}
-
-static void draw_report(Canvas* canvas, const SeosInspectData* d) {
-    canvas_set_font(canvas, FontPrimary);
-    canvas_draw_str_aligned(canvas, SCREEN_W / 2, 0, AlignCenter, AlignTop, "Inspection Report");
-    canvas_draw_line(canvas, 0, 13, SCREEN_W, 13);
-
-    canvas_set_font(canvas, FontSecondary);
-    int32_t y = 24;
-    char buf[40];
-
-    if(d->sam_ver) {
-        snprintf(buf, sizeof(buf), "SAM:  0x%04X", d->sam_ver);
-        canvas_draw_str(canvas, 4, y, buf);
-        y += 11;
-    }
-    if(d->core_ver) {
-        snprintf(buf, sizeof(buf), "Core: 0x%04X", d->core_ver);
-        canvas_draw_str(canvas, 4, y, buf);
-        y += 11;
-    }
-    if(d->assembly_count || d->persist_mem) {
-        if(d->persist_mem)
-            snprintf(
-                buf, sizeof(buf), "Apps: %u   Mem: %luB", d->assembly_count,
-                (unsigned long)d->persist_mem);
-        else
-            snprintf(buf, sizeof(buf), "Apps: %u", d->assembly_count);
-        canvas_draw_str(canvas, 4, y, buf);
-    } else if(!d->cred_parsed) {
-        canvas_draw_str(canvas, 4, y, "Cred table: timeout");
-    }
-
-    elements_button_right(canvas, "Next Page");
 }
 
 static void draw_credentials(Canvas* canvas, const SeosInspectViewModel* m) {
@@ -107,50 +68,44 @@ static void seos_inspect_view_draw(Canvas* canvas, void* model) {
     canvas_clear(canvas);
     if(!m->data) return;
 
-    if(m->page == SeosInspectPageCredentials)
-        draw_credentials(canvas, m);
-    else
-        draw_report(canvas, m->data);
+    draw_credentials(canvas, m);
 }
 
 static bool seos_inspect_view_input(InputEvent* event, void* context) {
     SeosInspectView* instance = context;
     if(event->type != InputTypeShort && event->type != InputTypeRepeat) return false;
 
+    // Left asks for the page before this one, which is the scene's to show.
+    // Back is left unhandled so the scene manager does the same.
+    if(event->key == InputKeyLeft) {
+        if(event->type == InputTypeShort && instance->left_callback) {
+            instance->left_callback(instance->left_context);
+        }
+        return true;
+    }
+
     bool consumed = false;
-    bool redraw = false;
     with_view_model(
         instance->view,
         SeosInspectViewModel * m,
         {
-            if(m->page == SeosInspectPageReport) {
-                // Back is left unhandled so the scene manager can exit.
-                if(event->key == InputKeyRight) {
-                    m->cred_scroll = 0;
-                    m->page = SeosInspectPageCredentials;
-                    consumed = true;
-                }
-            } else {
-                if(event->key == InputKeyLeft || event->key == InputKeyBack) {
-                    m->page = SeosInspectPageReport;
-                    consumed = true;
-                } else if(event->key == InputKeyDown && m->cred_scroll < cred_max_scroll()) {
-                    m->cred_scroll++;
-                    consumed = true;
-                } else if(event->key == InputKeyUp && m->cred_scroll > 0) {
-                    m->cred_scroll--;
-                    consumed = true;
-                }
+            if(event->key == InputKeyDown && m->cred_scroll < cred_max_scroll()) {
+                m->cred_scroll++;
+                consumed = true;
+            } else if(event->key == InputKeyUp && m->cred_scroll > 0) {
+                m->cred_scroll--;
+                consumed = true;
             }
-            redraw = consumed;
         },
-        redraw);
+        consumed);
 
     return consumed;
 }
 
 SeosInspectView* seos_inspect_view_alloc(void) {
     SeosInspectView* instance = malloc(sizeof(SeosInspectView));
+    instance->left_callback = NULL;
+    instance->left_context = NULL;
     instance->view = view_alloc();
     view_set_context(instance->view, instance);
     view_allocate_model(instance->view, ViewModelTypeLocking, sizeof(SeosInspectViewModel));
@@ -177,8 +132,16 @@ void seos_inspect_view_set_data(SeosInspectView* instance, const SeosInspectData
         SeosInspectViewModel * m,
         {
             m->data = data;
-            m->page = SeosInspectPageReport;
             m->cred_scroll = 0;
         },
         true);
+}
+
+void seos_inspect_view_set_left_callback(
+    SeosInspectView* instance,
+    SeosInspectViewLeftCallback callback,
+    void* context) {
+    furi_assert(instance);
+    instance->left_callback = callback;
+    instance->left_context = context;
 }
