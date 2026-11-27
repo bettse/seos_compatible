@@ -216,44 +216,76 @@ static bool snmp_cred_value(
     return false;
 }
 
-// The table is a run of (protocol, count, count * 9-byte entry) groups.
-static void parse_cred_table(const uint8_t* table, size_t len, SeosInspectData* ins) {
-    memset(ins->cred_enabled, 0, sizeof(ins->cred_enabled));
-    ins->seos_enabled = false;
+static bool proto_is_prox(uint8_t proto) {
+    return proto == 0x09 || proto == 0x0a || proto == 0x0b;
+}
 
-    size_t pos = 0;
-    while(pos + 1 < len) {
-        uint8_t proto = table[pos];
-        uint8_t count = table[pos + 1];
-        pos += 2;
-        if(pos + (size_t)count * 9 > len) break;
+static void cred_table_entry(SeosInspectData* ins, const uint8_t* entry) {
+    uint32_t hv = be_uint(entry, 4);
+    uint8_t ct = entry[7];
+    FURI_LOG_D(TAG, "cred proto=%02X hc=%08lX ct=%u", ins->cred_proto, (unsigned long)hv, ct);
 
-        if(proto == 0x15 && count > 0) ins->seos_enabled = true;
-        if((proto == 0x09 || proto == 0x0a || proto == 0x0b) && count > 0)
-            ins->cred_enabled[PROX_IDX] = true;
-
-        for(uint8_t i = 0; i < count; i++) {
-            uint32_t hv = be_uint(&table[pos], 4);
-            uint8_t ct = table[pos + 7];
-            FURI_LOG_D(TAG, "cred proto=%02X hc=%08lX ct=%u", proto, (unsigned long)hv, ct);
-
-            for(size_t ci = 0; ci < SEOS_INSPECT_CRED_COUNT; ci++) {
-                if(hv == CRED_ITEMS[ci].hivecode &&
-                   (CRED_ITEMS[ci].card_type == CT_ANY || (int16_t)ct == CRED_ITEMS[ci].card_type ||
-                    ct == 0)) {
-                    ins->cred_enabled[ci] = true;
-                }
-            }
-            if(hv == 0x4C87F761 && ct == 7) ins->seos_enabled = true;
-            pos += 9;
+    for(size_t ci = 0; ci < SEOS_INSPECT_CRED_COUNT; ci++) {
+        if(hv == CRED_ITEMS[ci].hivecode &&
+           (CRED_ITEMS[ci].card_type == CT_ANY || (int16_t)ct == CRED_ITEMS[ci].card_type ||
+            ct == 0)) {
+            ins->cred_enabled[ci] = true;
         }
     }
+    if(hv == 0x4C87F761 && ct == 7) ins->seos_enabled = true;
+}
 
-    // A 125kHz group cut off at a frame boundary still implies Prox.
-    if(pos < len) {
-        uint8_t t = table[pos];
-        if(t == 0x09 || t == 0x0a || t == 0x0b) ins->cred_enabled[PROX_IDX] = true;
+static void cred_table_begin(SeosInspectData* ins, size_t declared) {
+    memset(ins->cred_enabled, 0, sizeof(ins->cred_enabled));
+    ins->seos_enabled = false;
+    ins->cred_started = true;
+    ins->cred_declared = declared;
+    ins->cred_received = 0;
+    ins->cred_remaining = 0;
+    ins->cred_part_len = 0;
+}
+
+// The table is a run of (protocol, count, count * 9-byte entry) groups. It is
+// taken a byte at a time so a group or an entry can straddle two fragments,
+// and nothing more than the piece in progress has to be kept. Bytes past the
+// length the table declared are not part of it and are left alone.
+static void cred_table_feed(SeosInspectData* ins, const uint8_t* data, size_t len) {
+    size_t wanted = ins->cred_declared - ins->cred_received;
+    if(len > wanted) len = wanted;
+    ins->cred_received += len;
+
+    for(size_t i = 0; i < len; i++) {
+        ins->cred_part[ins->cred_part_len++] = data[i];
+
+        if(ins->cred_remaining == 0) {
+            // Between groups: the next two bytes are a header.
+            if(ins->cred_part_len < 2) continue;
+            ins->cred_proto = ins->cred_part[0];
+            ins->cred_remaining = ins->cred_part[1];
+            ins->cred_part_len = 0;
+            if(ins->cred_remaining > 0) {
+                if(ins->cred_proto == 0x15) ins->seos_enabled = true;
+                if(proto_is_prox(ins->cred_proto)) ins->cred_enabled[PROX_IDX] = true;
+            }
+        } else {
+            if(ins->cred_part_len < SEOS_INSPECT_CRED_ENTRY_LEN) continue;
+            cred_table_entry(ins, ins->cred_part);
+            ins->cred_part_len = 0;
+            ins->cred_remaining--;
+        }
     }
+}
+
+static bool cred_table_complete(const SeosInspectData* ins) {
+    return ins->cred_started && ins->cred_received >= ins->cred_declared;
+}
+
+static void cred_table_finish(SeosInspectData* ins) {
+    // A 125kHz group cut off after its protocol byte still implies Prox.
+    if(ins->cred_remaining == 0 && ins->cred_part_len == 1 && proto_is_prox(ins->cred_part[0])) {
+        ins->cred_enabled[PROX_IDX] = true;
+    }
+    ins->cred_parsed = true;
 }
 
 static void append_sw(BitBuffer* tx, const uint8_t sw[2]) {
@@ -272,25 +304,20 @@ static void accumulate_cred(
     size_t apdu_len,
     const uint8_t* payload,
     size_t payload_len) {
-    if(ins->cred_declared == 0) {
+    if(!ins->cred_started) {
+        // The first fragment says how long the table is and starts it.
         const uint8_t* tbl;
         size_t tbl_len, declared;
         if(payload && snmp_cred_value(payload, payload_len, &tbl, &tbl_len, &declared)) {
-            if(tbl_len > sizeof(ins->cred_buf)) tbl_len = sizeof(ins->cred_buf);
-            memcpy(ins->cred_buf, tbl, tbl_len);
-            ins->cred_buf_len = tbl_len;
-            ins->cred_declared = declared;
+            cred_table_begin(ins, declared);
+            cred_table_feed(ins, tbl, tbl_len);
         }
         return;
     }
+    // Every fragment after it is bare table bytes.
     size_t raw_len;
     const uint8_t* raw = put_data_field(apdu, apdu_len, &raw_len);
-    size_t space = sizeof(ins->cred_buf) - ins->cred_buf_len;
-    if(raw_len > space) raw_len = space;
-    if(raw && raw_len) {
-        memcpy(ins->cred_buf + ins->cred_buf_len, raw, raw_len);
-        ins->cred_buf_len += raw_len;
-    }
+    if(raw && raw_len) cred_table_feed(ins, raw, raw_len);
 }
 
 void seos_inspect_reset(SeosInspectData* inspect) {
@@ -347,17 +374,16 @@ static SeosInspectEvent
     size_t payload_len = 0;
     const uint8_t* payload = is_da ? ipc_payload(apdu, apdu_len, &payload_len) : NULL;
 
-    // The credential table spans several PUT DATA fragments; reassemble, then
-    // parse once the declared length is complete.
+    // The credential table spans several PUT DATA fragments; it is read as
+    // they arrive and is done once the length it declared has come in.
     if(is_da && ins->state == SeosInspectCredConfig) {
-        if(ins->cred_declared == 0 && !payload) {
+        if(!ins->cred_started && !payload) {
             if(++ins->poll_count >= SEOS_INSPECT_POLL_TIMEOUT) ins->state = SeosInspectSuspendEnd;
         } else {
             accumulate_cred(ins, apdu, apdu_len, payload, payload_len);
-            if(ins->cred_declared && ins->cred_buf_len >= ins->cred_declared) {
-                FURI_LOG_I(TAG, "Cred table complete: %u bytes", (unsigned)ins->cred_buf_len);
-                parse_cred_table(ins->cred_buf, ins->cred_declared, ins);
-                ins->cred_parsed = true;
+            if(cred_table_complete(ins)) {
+                FURI_LOG_I(TAG, "Cred table complete: %u bytes", (unsigned)ins->cred_received);
+                cred_table_finish(ins);
                 ins->state = SeosInspectSuspendEnd;
             }
         }

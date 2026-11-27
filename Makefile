@@ -47,7 +47,8 @@ HOST_TEST_SOURCES := \
 	$(HOST_TESTS)/test_ble_framing.c \
 	$(HOST_TESTS)/test_session_vectors.c \
 	$(HOST_TESTS)/test_emulated_card.c \
-	$(HOST_TESTS)/test_select_adf.c
+	$(HOST_TESTS)/test_select_adf.c \
+	$(HOST_TESTS)/test_inspect.c
 
 HOST_TEST_APP_SOURCES := \
 	seos_tlv.c \
@@ -59,6 +60,7 @@ HOST_TEST_APP_SOURCES := \
 	secure_messaging.c \
 	seos_protocol.c \
 	seos_sm_command.c \
+	seos_inspect.c \
 	seos_ble_policy.c \
 	ble_shared/seos_ble_framing.c \
 	memmem.c

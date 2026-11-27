@@ -26,7 +26,8 @@ typedef enum {
 } SeosInspectState;
 
 #define SEOS_INSPECT_CRED_COUNT 8
-#define SEOS_INSPECT_CRED_BUF   256
+// A table entry: a four-byte hivecode, then its card type in the eighth byte.
+#define SEOS_INSPECT_CRED_ENTRY_LEN 9
 #define SEOS_INSPECT_REASM_BUF  512
 #define SEOS_INSPECT_WIRE_MAX   300
 
@@ -45,11 +46,16 @@ typedef struct {
     bool seos_enabled;
     bool cred_parsed;
 
-    // The credential table arrives split across PUT DATA fragments; collected
-    // here until the length the first fragment declared is complete.
-    uint8_t cred_buf[SEOS_INSPECT_CRED_BUF];
-    size_t cred_buf_len;
-    size_t cred_declared;
+    // The credential table arrives split across PUT DATA fragments and is read
+    // as it comes rather than kept: a group header or one entry is the most
+    // that is ever held, so the table can be any length.
+    bool cred_started; // The first fragment, which declares the length, was seen.
+    size_t cred_declared; // Length the table declares.
+    size_t cred_received; // How much of that has arrived.
+    uint8_t cred_proto; // Protocol of the group being read.
+    uint8_t cred_remaining; // Entries of that group still to come.
+    uint8_t cred_part[SEOS_INSPECT_CRED_ENTRY_LEN]; // Header or entry in progress.
+    uint8_t cred_part_len;
 
     // ISO-DEP (T=CL) framing state. We drive the block protocol ourselves on a
     // raw 3A listener because the firmware 4A path mishandles the reader's
