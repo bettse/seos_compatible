@@ -27,6 +27,7 @@
 #include "seos_common.h"
 #include "seos_reader.h"
 #include "seos_emulator.h"
+#include "seos_inspect_view.h"
 #include "seos_ble_plugin.h"
 #include "seos_protocol.h"
 #include "scenes/seos_scene.h"
@@ -53,6 +54,7 @@ struct Seos {
     TextInput* text_input;
     TextBox* text_box;
     Widget* widget;
+    SeosInspectView* inspect_view;
 
     Nfc* nfc;
     NfcListener* listener;
@@ -85,6 +87,7 @@ typedef enum {
     SeosViewTextInput,
     SeosViewTextBox,
     SeosViewWidget,
+    SeosViewInspect,
 } SeosView;
 
 void seos_text_store_set(Seos* seos, const char* text, ...);

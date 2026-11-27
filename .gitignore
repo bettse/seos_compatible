@@ -4,3 +4,4 @@ keys.txt
 *_keys.txt
 build
 __pycache__
+.DS_Store
