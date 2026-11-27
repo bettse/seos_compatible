@@ -26,6 +26,9 @@ extern "C" {
 extern const uint8_t SEOS_SW_SUCCESS[2];
 extern const uint8_t SEOS_SW_FILE_NOT_FOUND[2];
 
+/* The Seos application, as every reader and card selects it. */
+extern const uint8_t standard_seos_aid[10];
+
 /* Applications a HID reader selects besides the Seos one. A credential being
  * emulated refuses all three; reader inspection is carried out through them. */
 extern const uint8_t MOBILE_SEOS_ADMIN_CARD[10];
