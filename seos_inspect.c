@@ -2,7 +2,6 @@
 
 #include "seos_tlv.h"
 #include "seos_protocol.h"
-#include "seos_iso14443_4.h"
 
 #include <string.h>
 
@@ -322,6 +321,7 @@ static void accumulate_cred(
 
 void seos_inspect_reset(SeosInspectData* inspect) {
     memset(inspect, 0, sizeof(SeosInspectData));
+    seos_iso14443_4_card_init(&inspect->card, HID_ATS, sizeof(HID_ATS));
 }
 
 // Answer a SELECT in any pre-inspection state, or begin the IPC poll loop.
@@ -479,6 +479,10 @@ static SeosInspectEvent
     return collection(ins, apdu, apdu_len, tx);
 }
 
+void seos_inspect_field_off(SeosInspectData* ins) {
+    seos_iso14443_4_card_drop_command(&ins->card);
+}
+
 void seos_inspect_handle_frame(
     SeosInspectData* ins,
     const uint8_t* frame,
@@ -487,80 +491,19 @@ void seos_inspect_handle_frame(
     SeosInspectEvent* event) {
     *event = SeosInspectEventNone;
     bit_buffer_reset(tx);
-    if(frame_len < 1) return;
-    uint8_t pcb = frame[0];
 
-    // RATS and PPS sit outside the block layer and would both be misread as
-    // S-blocks by the classifier, so they are handled before it.
+    const uint8_t* reply = NULL;
+    size_t reply_len = 0;
+    SeosIso14443_4CardResult result =
+        seos_iso14443_4_card_receive(&ins->card, frame, frame_len, &reply, &reply_len);
+    if(result == SeosIso14443_4CardSilent) return;
 
-    // RATS: record CID, answer with our ATS.
-    if(pcb == 0xe0 && frame_len >= 2) {
-        ins->cid = frame[1] & 0x0f;
-        ins->reasm_len = 0;
-        bit_buffer_copy_bytes(tx, HID_ATS, sizeof(HID_ATS));
-        return;
-    }
+    bit_buffer_copy_bytes(tx, reply, reply_len);
+    if(result != SeosIso14443_4CardCommand) return;
 
-    // PPS: echo the PPSS byte.
-    if((pcb & 0xf0) == 0xd0) {
-        bit_buffer_append_byte(tx, pcb);
-        return;
-    }
-
-    SeosIso14443_4BlockType block = seos_iso14443_4_classify(pcb);
-    bool has_cid = pcb & SEOS_ISO14443_4_PCB_CID;
-
-    if(block == SeosIso14443_4BlockI) {
-        // Gather this block's payload into the reassembly buffer.
-        size_t off = seos_iso14443_4_header_len(pcb);
-        if(off <= frame_len) {
-            size_t inf = frame_len - off;
-            if(ins->reasm_len + inf <= sizeof(ins->reasm)) {
-                memcpy(ins->reasm + ins->reasm_len, frame + off, inf);
-                ins->reasm_len += inf;
-            }
-        }
-
-        // More to come: acknowledge with an R-block carrying the block number
-        // (an ACK is a NAK without the NAK bit) and wait for the rest.
-        if(seos_iso14443_4_is_chaining(pcb)) {
-            bit_buffer_append_byte(tx, seos_iso14443_4_nak_pcb(pcb) & ~SEOS_ISO14443_4_PCB_NAK);
-            if(has_cid) bit_buffer_append_byte(tx, ins->cid);
-            return;
-        }
-
-        // Last block: write the I-block header, then run the APDU, which
-        // appends its reply after it.
-        bit_buffer_append_byte(tx, seos_iso14443_4_response_pcb(pcb, false));
-        if(has_cid) bit_buffer_append_byte(tx, ins->cid);
-        *event = handle_apdu(ins, ins->reasm, ins->reasm_len, tx);
-        ins->reasm_len = 0;
-
-        // Keep a copy to resend if an R-block asks for it.
-        size_t n = bit_buffer_get_size_bytes(tx);
-        if(n <= sizeof(ins->last_tx)) {
-            memcpy(ins->last_tx, bit_buffer_get_data(tx), n);
-            ins->last_tx_len = n;
-        }
-        return;
-    }
-
-    if(block == SeosIso14443_4BlockR) {
-        // Retransmit our last I-block.
-        if(ins->last_tx_len) bit_buffer_copy_bytes(tx, ins->last_tx, ins->last_tx_len);
-        return;
-    }
-
-    if(block == SeosIso14443_4BlockS) {
-        // Echo the block. DESELECT ends the exchange; WTX carries its request
-        // byte back.
-        bit_buffer_append_byte(tx, pcb);
-        if(has_cid) bit_buffer_append_byte(tx, ins->cid);
-        if(seos_iso14443_4_is_deselect(pcb)) {
-            ins->reasm_len = 0;
-        } else {
-            size_t inf_off = seos_iso14443_4_header_len(pcb);
-            if(inf_off < frame_len) bit_buffer_append_byte(tx, frame[inf_off] & 0x3f);
-        }
-    }
+    // A whole command: the reply so far is the answering block's header, and
+    // the inspection step appends its answer after it.
+    *event = handle_apdu(ins, ins->card.command, ins->card.command_len, tx);
+    seos_iso14443_4_card_answered(
+        &ins->card, bit_buffer_get_data(tx), bit_buffer_get_size_bytes(tx));
 }

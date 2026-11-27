@@ -7,6 +7,8 @@
 #include <furi.h>
 #include <lib/toolbox/bit_buffer.h>
 
+#include "seos_iso14443_4.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -28,8 +30,6 @@ typedef enum {
 #define SEOS_INSPECT_CRED_COUNT 8
 // A table entry: a four-byte hivecode, then its card type in the eighth byte.
 #define SEOS_INSPECT_CRED_ENTRY_LEN 9
-#define SEOS_INSPECT_REASM_BUF  512
-#define SEOS_INSPECT_WIRE_MAX   300
 
 typedef struct {
     SeosInspectState state;
@@ -57,14 +57,10 @@ typedef struct {
     uint8_t cred_part[SEOS_INSPECT_CRED_ENTRY_LEN]; // Header or entry in progress.
     uint8_t cred_part_len;
 
-    // ISO-DEP (T=CL) framing state. We drive the block protocol ourselves on a
-    // raw 3A listener because the firmware 4A path mishandles the reader's
-    // chained credential-table response and makes it drop the field.
-    uint8_t cid;
-    uint8_t reasm[SEOS_INSPECT_REASM_BUF];
-    size_t reasm_len;
-    uint8_t last_tx[SEOS_INSPECT_WIRE_MAX];
-    size_t last_tx_len;
+    // The block protocol under the commands. We run it ourselves on a raw 3A
+    // listener because the firmware 4A path mishandles the reader's chained
+    // credential-table response and makes it drop the field.
+    SeosIso14443_4Card card;
 } SeosInspectData;
 
 // What the caller should surface after handling a frame.
@@ -78,6 +74,9 @@ typedef enum {
 const char* seos_inspect_cred_name(size_t i);
 
 void seos_inspect_reset(SeosInspectData* inspect);
+
+// The field went away: a command that was only partly received is forgotten.
+void seos_inspect_field_off(SeosInspectData* inspect);
 
 // Handle one raw 3A frame (PCB + INF, no CRC): run the T=CL block protocol and,
 // for a complete APDU, the inspection step. Resets tx and writes the wire

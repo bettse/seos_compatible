@@ -128,7 +128,7 @@ NfcCommand seos_inspect_listener_callback(NfcGenericEvent event, void* context) 
             ret = NfcCommandStop;
         }
     } else if(iso_event->type == Iso14443_3aListenerEventTypeFieldOff) {
-        seos_emulator->inspect.reasm_len = 0;
+        seos_inspect_field_off(&seos_emulator->inspect);
     }
 
     return ret;
