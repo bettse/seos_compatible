@@ -12,7 +12,7 @@ App(
     fap_icon="seos.png",  # 10x10 1-bit PNG
     fap_description="Seos compatible reader/emulator",
     fap_author="bettse",
-    fap_weburl="https://gitlab.com/bettse/flipper_seos",
+    fap_weburl="https://github.com/bettse/seos_compatible",
     fap_icon_assets="images",  # Image assets to compile for this application
     fap_file_assets="files",
     fap_libs=["mbedtls"],
